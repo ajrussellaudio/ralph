@@ -2,17 +2,19 @@
 # Ralph — Long-running Copilot CLI agent loop with bash-side mode routing
 #
 # Usage:
-#   ./ralph.sh <max_iterations>
+#   ./ralph.sh <max_iterations> [--label=<label>]
 #
-# Example:
+# Examples:
 #   ./ralph.sh 20
+#   ./ralph.sh 20 --label=foo-widget
 #
 # Each iteration:
 #   1. Checks GitHub for open ralph PRs or open issues (in bash)
 #   2. Determines which mode to run (implement, review, review-round2, fix,
 #      force-approve, or merge)
 #   3. Loads the mode-specific prompt from ralph/modes/<mode>.md
-#   4. Substitutes {{REPO}}, {{PR_NUMBER}}, {{ISSUE_NUMBER}} placeholders
+#   4. Substitutes {{REPO}}, {{PR_NUMBER}}, {{ISSUE_NUMBER}}, {{FEATURE_BRANCH}}
+#      placeholders
 #   5. Runs Copilot with that focused, self-contained prompt
 #
 # The loop stops early if Copilot emits <promise>COMPLETE</promise> or if
@@ -35,23 +37,48 @@ toml_get() {
 REPO=$(toml_get repo)
 BUILD_CMD=$(toml_get build)
 TEST_CMD=$(toml_get test)
-PERMANENT_ISSUE=$(toml_get permanent_issue)
 
 # ── Argument validation ────────────────────────────────────────────────────────
 
-if [[ $# -ne 1 ]] || ! [[ "$1" =~ ^[1-9][0-9]*$ ]]; then
-  echo "Usage: $(basename "$0") <max_iterations>"
+usage() {
+  echo "Usage: $(basename "$0") <max_iterations> [--label=<label>]"
   echo ""
   echo "  max_iterations  A positive integer — how many Copilot iterations to"
   echo "                  allow before giving up. There is no default; you must"
   echo "                  decide how many loops is reasonable for your task."
   echo ""
-  echo "Example:"
+  echo "  --label=<label> Optional feature label. Derives FEATURE_BRANCH=feat/<label>"
+  echo "                  and FEATURE_LABEL=prd/<label>. When omitted, FEATURE_BRANCH"
+  echo "                  defaults to 'main'."
+  echo ""
+  echo "Examples:"
   echo "  $(basename "$0") 20"
+  echo "  $(basename "$0") 20 --label=foo-widget"
+}
+
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+  usage
+  exit 1
+fi
+
+if ! [[ "$1" =~ ^[1-9][0-9]*$ ]]; then
+  usage
   exit 1
 fi
 
 MAX_ITERATIONS="$1"
+FEATURE_LABEL=""
+FEATURE_BRANCH="main"
+
+if [[ $# -eq 2 ]]; then
+  if [[ "$2" =~ ^--label=(.+)$ ]]; then
+    FEATURE_LABEL="prd/${BASH_REMATCH[1]}"
+    FEATURE_BRANCH="feat/${BASH_REMATCH[1]}"
+  else
+    usage
+    exit 1
+  fi
+fi
 
 # ── Preflight checks ───────────────────────────────────────────────────────────
 
@@ -81,11 +108,6 @@ if [[ -z "$TEST_CMD" ]]; then
   exit 1
 fi
 
-if [[ -z "$PERMANENT_ISSUE" ]]; then
-  echo "Error: Could not read 'permanent_issue' from $SCRIPT_DIR/project.toml"
-  exit 1
-fi
-
 # ── Worktree setup ─────────────────────────────────────────────────────────────
 
 # Remove the worktree on exit (clean finish, error, or Ctrl-C).
@@ -110,7 +132,18 @@ fi
 
 echo ""
 echo "  Creating worktree at ${WORKTREE_DIR} …"
-git -C "$GIT_ROOT" worktree add --detach "$WORKTREE_DIR" origin/main
+
+# If a feature branch was specified and doesn't yet exist on origin, create it.
+if [[ "$FEATURE_BRANCH" != "main" ]]; then
+  if ! git -C "$GIT_ROOT" ls-remote --exit-code --heads origin "$FEATURE_BRANCH" > /dev/null 2>&1; then
+    echo "  🌿 Branch origin/${FEATURE_BRANCH} not found — creating from origin/main and pushing…"
+    git -C "$GIT_ROOT" fetch origin main > /dev/null
+    git -C "$GIT_ROOT" push origin "origin/main:refs/heads/${FEATURE_BRANCH}"
+    echo "  ✅  Branch ${FEATURE_BRANCH} created on origin."
+  fi
+fi
+
+git -C "$GIT_ROOT" worktree add --detach "$WORKTREE_DIR" "origin/$FEATURE_BRANCH"
 
 # ── Routing ────────────────────────────────────────────────────────────────────
 
@@ -121,7 +154,7 @@ determine_mode() {
   ISSUE_NUMBER=""
 
   echo "  🔄 Syncing workspace…"
-  (cd "$WORKTREE_DIR" && git fetch origin && git reset --hard origin/main) > /dev/null 2>&1
+  (cd "$WORKTREE_DIR" && git fetch origin && git reset --hard "origin/$FEATURE_BRANCH") > /dev/null 2>&1
 
   echo "  🔍 Checking for open ralph PRs in ${REPO}…"
   OPEN_RALPH_PRS=$(gh pr list --repo "$REPO" --state open \
@@ -171,7 +204,12 @@ determine_mode() {
     echo "  🔍 No open ralph PRs — checking issues…"
 
     # Pick highest-priority open issue: high-priority label first, then lowest number
+    LABEL_FILTER=()
+    if [[ -n "$FEATURE_LABEL" ]]; then
+      LABEL_FILTER=(--label "$FEATURE_LABEL")
+    fi
     ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
+      "${LABEL_FILTER[@]}" \
       --json number,labels --limit 100 \
       --jq '
         [.[] | select(.labels | map(.name) | (any(. == "prd") or any(. == "blocked")) | not)]
@@ -207,7 +245,8 @@ build_prompt() {
   PROMPT="${PROMPT//\{\{ISSUE_NUMBER\}\}/$ISSUE_NUMBER}"
   PROMPT="${PROMPT//\{\{BUILD_CMD\}\}/$BUILD_CMD}"
   PROMPT="${PROMPT//\{\{TEST_CMD\}\}/$TEST_CMD}"
-  PROMPT="${PROMPT//\{\{PERMANENT_ISSUE\}\}/$PERMANENT_ISSUE}"
+  PROMPT="${PROMPT//\{\{FEATURE_BRANCH\}\}/$FEATURE_BRANCH}"
+  PROMPT="${PROMPT//\{\{FEATURE_LABEL\}\}/$FEATURE_LABEL}"
 }
 
 # ── Main loop ──────────────────────────────────────────────────────────────────

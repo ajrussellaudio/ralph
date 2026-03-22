@@ -5,7 +5,7 @@ Ralph is a generic, self-contained AI agent loop that autonomously works through
 ## How it works
 
 Each iteration Ralph:
-1. Syncs to `origin/main`
+1. Syncs to `origin/$FEATURE_BRANCH` (defaults to `origin/main`)
 2. Checks for open PRs to review, fix, or merge
 3. If none, picks the most important open issue and implements it
 4. Opens a PR and stops — the next iteration reviews it
@@ -22,12 +22,14 @@ Each iteration Ralph:
 2. **Configure for your project** — copy and fill in the template:
    ```bash
    cp ralph/project.example.toml ralph/project.toml
-   # Edit ralph/project.toml with your repo name, build/test commands, and permanent issue number
+   # Edit ralph/project.toml with your repo name and build/test commands
    ```
 
 3. **Run:**
    ```bash
    ./ralph/ralph.sh 20
+   # or, to work within a feature branch:
+   ./ralph/ralph.sh 20 --label=foo-widget
    ```
    Replace `20` with however many iterations you want to allow.
 
