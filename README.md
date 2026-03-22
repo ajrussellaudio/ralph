@@ -16,13 +16,13 @@ Each iteration Ralph:
 1. **Add Ralph to your repo:**
    ```bash
    git clone https://github.com/ajrussellaudio/ralph.git ralph
-   echo 'ralph/project.md' >> .gitignore   # keep project config local, or commit it
+   echo 'ralph/project.toml' >> .gitignore   # keep project config local, or commit it
    ```
 
 2. **Configure for your project** — copy and fill in the template:
    ```bash
-   cp ralph/project.example.md ralph/project.md
-   # Edit ralph/project.md with your repo name, build/test commands, and permanent issue number
+   cp ralph/project.example.toml ralph/project.toml
+   # Edit ralph/project.toml with your repo name, build/test commands, and permanent issue number
    ```
 
 3. **Run:**
@@ -42,9 +42,9 @@ Each iteration Ralph:
 | File | Purpose |
 |------|---------|
 | `ralph.sh` | The loop script — generic, no project-specific code |
-| `prompt.md` | The agent prompt — reads `project.md` for all project-specific values |
-| `project.example.md` | Annotated template — copy to `project.md` and fill in |
-| `project.md` | Your project config — created from the template, not committed here |
+| `modes/` | Per-mode agent prompts (`implement.md`, `review.md`, `fix.md`, `merge.md`, etc.) |
+| `project.example.toml` | Annotated template — copy to `project.toml` and fill in |
+| `project.toml` | Your project config — created from the template, not committed here |
 
 ## Stopping Ralph
 

@@ -25,8 +25,17 @@ GIT_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 MODES_DIR="$SCRIPT_DIR/modes"
 WORKTREE_DIR="${GIT_ROOT%/*}/$(basename "$GIT_ROOT")-ralph-workspace"
 
-# Extract repo slug from project.md (line: "**GitHub repo:** `owner/name`")
-REPO=$(grep -m1 'GitHub repo' "$SCRIPT_DIR/project.md" | grep -oE '`[^`]+`' | tr -d '`')
+# Parse a value from project.toml by key name.
+# Handles quoted strings (repo = "owner/repo") and bare integers (permanent_issue = 1).
+toml_get() {
+  grep -E "^$1 *=" "$SCRIPT_DIR/project.toml" \
+    | sed -E 's/^[^=]+= *"?([^"]*)"? *$/\1/'
+}
+
+REPO=$(toml_get repo)
+BUILD_CMD=$(toml_get build)
+TEST_CMD=$(toml_get test)
+PERMANENT_ISSUE=$(toml_get permanent_issue)
 
 # ── Argument validation ────────────────────────────────────────────────────────
 
@@ -56,8 +65,24 @@ if [[ ! -d "$MODES_DIR" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$SCRIPT_DIR/project.toml" ]]; then
+  echo "Error: project.toml not found at $SCRIPT_DIR/project.toml"
+  echo "Copy project.example.toml to project.toml and fill in your values."
+  exit 1
+fi
+
 if [[ -z "$REPO" ]]; then
-  echo "Error: Could not extract repo slug from $SCRIPT_DIR/project.md"
+  echo "Error: Could not read 'repo' from $SCRIPT_DIR/project.toml"
+  exit 1
+fi
+
+if [[ -z "$TEST_CMD" ]]; then
+  echo "Error: Could not read 'test' from $SCRIPT_DIR/project.toml"
+  exit 1
+fi
+
+if [[ -z "$PERMANENT_ISSUE" ]]; then
+  echo "Error: Could not read 'permanent_issue' from $SCRIPT_DIR/project.toml"
   exit 1
 fi
 
@@ -180,6 +205,9 @@ build_prompt() {
   PROMPT="${PROMPT//\{\{REPO\}\}/$REPO}"
   PROMPT="${PROMPT//\{\{PR_NUMBER\}\}/$PR_NUMBER}"
   PROMPT="${PROMPT//\{\{ISSUE_NUMBER\}\}/$ISSUE_NUMBER}"
+  PROMPT="${PROMPT//\{\{BUILD_CMD\}\}/$BUILD_CMD}"
+  PROMPT="${PROMPT//\{\{TEST_CMD\}\}/$TEST_CMD}"
+  PROMPT="${PROMPT//\{\{PERMANENT_ISSUE\}\}/$PERMANENT_ISSUE}"
 }
 
 # ── Main loop ──────────────────────────────────────────────────────────────────

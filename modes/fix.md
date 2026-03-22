@@ -2,8 +2,6 @@
 
 PR #{{PR_NUMBER}} in `{{REPO}}` has a `<!-- RALPH-REVIEW: REQUEST_CHANGES -->` comment that needs addressing.
 
-Read `ralph/project.md` for the build and test commands.
-
 ## Step 1 — Read the review
 
 Use `gh pr view {{PR_NUMBER}} --repo {{REPO}} --comments` or GitHub MCP tools to read the REQUEST_CHANGES comment. Read **every** issue listed — you must address all of them in one pass, not just some.
@@ -26,7 +24,7 @@ git checkout <branch-name>
 ## Step 3 — Fix
 
 - Implement fixes for every raised issue. Delegate large file reads to sub-agents.
-- Run the test command from `ralph/project.md` using a sub-agent. Fix any test failures.
+- Run `{{TEST_CMD}}` using a sub-agent. Fix any test failures.
 
 ## Step 4 — Commit and push
 

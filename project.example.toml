@@ -1,0 +1,7 @@
+# Ralph project configuration
+# Copy this file to ralph/project.toml and fill in the values.
+
+repo = ""
+build = ""
+test = ""
+permanent_issue = 0
