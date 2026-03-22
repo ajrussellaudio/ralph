@@ -137,8 +137,8 @@ echo "  Creating worktree at ${WORKTREE_DIR} …"
 if [[ "$FEATURE_BRANCH" != "main" ]]; then
   if ! git -C "$GIT_ROOT" ls-remote --exit-code --heads origin "$FEATURE_BRANCH" > /dev/null 2>&1; then
     echo "  🌿 Branch origin/${FEATURE_BRANCH} not found — creating from origin/main and pushing…"
-    git -C "$GIT_ROOT" fetch origin main > /dev/null 2>&1
-    git -C "$GIT_ROOT" push origin "origin/main:refs/heads/${FEATURE_BRANCH}" > /dev/null 2>&1
+    git -C "$GIT_ROOT" fetch origin main > /dev/null
+    git -C "$GIT_ROOT" push origin "origin/main:refs/heads/${FEATURE_BRANCH}"
     echo "  ✅  Branch ${FEATURE_BRANCH} created on origin."
   fi
 fi
@@ -204,7 +204,12 @@ determine_mode() {
     echo "  🔍 No open ralph PRs — checking issues…"
 
     # Pick highest-priority open issue: high-priority label first, then lowest number
+    LABEL_FILTER=()
+    if [[ -n "$FEATURE_LABEL" ]]; then
+      LABEL_FILTER=(--label "$FEATURE_LABEL")
+    fi
     ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
+      "${LABEL_FILTER[@]}" \
       --json number,labels --limit 100 \
       --jq '
         [.[] | select(.labels | map(.name) | (any(. == "prd") or any(. == "blocked")) | not)]
@@ -241,6 +246,7 @@ build_prompt() {
   PROMPT="${PROMPT//\{\{BUILD_CMD\}\}/$BUILD_CMD}"
   PROMPT="${PROMPT//\{\{TEST_CMD\}\}/$TEST_CMD}"
   PROMPT="${PROMPT//\{\{FEATURE_BRANCH\}\}/$FEATURE_BRANCH}"
+  PROMPT="${PROMPT//\{\{FEATURE_LABEL\}\}/$FEATURE_LABEL}"
 }
 
 # ── Main loop ──────────────────────────────────────────────────────────────────
