@@ -256,6 +256,21 @@ determine_mode() {
     if [[ -n "$ISSUE_NUMBER" ]]; then
       MODE="implement"
       echo "  ▶  Mode: $MODE  (Issue #$ISSUE_NUMBER)"
+    elif [[ -n "$FEATURE_LABEL" && "$FEATURE_BRANCH" != "main" ]]; then
+      # PRD mode with no remaining task issues — check for an existing feat→main PR
+      FEATURE_PR_COUNT=$(gh pr list --repo "$REPO" --state open \
+        --base "main" \
+        --head "$FEATURE_BRANCH" \
+        --json number --jq 'length' \
+        < /dev/null 2>/dev/null || echo "0")
+
+      if [[ "$FEATURE_PR_COUNT" -eq 0 ]]; then
+        MODE="feature-pr"
+        echo "  ▶  Mode: $MODE  (all task issues closed, opening feat→main PR)"
+      else
+        MODE="complete"
+        echo "  ▶  Mode: $MODE  (feat→main PR already open)"
+      fi
     else
       MODE="complete"
       echo "  ▶  Mode: $MODE  (no open issues or PRs)"
