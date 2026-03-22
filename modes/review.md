@@ -1,18 +1,24 @@
 # Ralph — Review Mode (Round 1)
 
-You are reviewing PR #{{PR_NUMBER}} in the `{{REPO}}` repository.
+You are reviewing task #{{TASK_ID}} from the local task database.
 
 ⚠️ **Never** use `gh pr comment --body "..."` — it hangs waiting for stdin. Always write the body to a temp file and use `--body-file <file> < /dev/null`.
 
-## Step 1 — Review
+## Step 1 — Read the task details
+
+```bash
+TASK_BRANCH=$(sqlite3 {{DB_PATH}} "SELECT branch FROM tasks WHERE id={{TASK_ID}};")
+sqlite3 {{DB_PATH}} "SELECT title FROM tasks WHERE id={{TASK_ID}};"
+```
+
+## Step 2 — Review
 
 Delegate the review to a sub-agent. Do not review the code yourself.
 
 Launch a **general-purpose sub-agent** with this prompt:
 
-> "Review PR #{{PR_NUMBER}} in `{{REPO}}`.
-> Get the diff with: `gh pr diff {{PR_NUMBER}} --repo {{REPO}}`
-> Get the PR description using GitHub MCP tools.
+> "Review the local branch `$TASK_BRANCH` against `{{FEATURE_BRANCH}}`.
+> Get the diff with: `git diff {{FEATURE_BRANCH}}...$TASK_BRANCH`
 > Run the test suite: `{{TEST_CMD}}`
 > You are a strict code reviewer with no attachment to this code.
 > Surface only: genuine bugs, logic errors, missing test coverage for new behaviour, or security issues.
@@ -20,43 +26,22 @@ Launch a **general-purpose sub-agent** with this prompt:
 > For each issue found, return: file path, approximate line number, a clear description of the problem, and a concrete suggested fix.
 > If you find no genuine issues, return exactly the word: LGTM"
 
-**If LGTM:** post an APPROVED comment (see below), then emit the following token as your **final output** and end your response immediately:
-
-<promise>STOP</promise>
-
-**If issues found:** post a REQUEST_CHANGES comment (see below), then emit the following token as your **final output** and end your response immediately:
-
-<promise>STOP</promise>
-
-## Comment formats
-
-Post all review comments by writing the body to a temp file and using `--body-file` with stdin closed:
+**If LGTM:** update the task status to `approved`:
 
 ```bash
-cat > /tmp/ralph-review.md << 'EOF'
-<comment body here>
-EOF
-gh pr comment {{PR_NUMBER}} --repo {{REPO}} --body-file /tmp/ralph-review.md < /dev/null
-rm /tmp/ralph-review.md
+sqlite3 {{DB_PATH}} "UPDATE tasks SET status='approved' WHERE id={{TASK_ID}};"
 ```
 
-**APPROVED:**
+Then emit the following token as your **final output** and end your response immediately:
+
+<promise>STOP</promise>
+
+**If issues found:** write the review notes to the DB (escape single quotes as `''`) and update the task status to `needs_fix`:
+
+```bash
+sqlite3 {{DB_PATH}} "UPDATE tasks SET status='needs_fix', review_notes='<review notes here>' WHERE id={{TASK_ID}};"
 ```
-<!-- RALPH-REVIEW: APPROVED -->
 
-LGTM — no blocking issues found. ✅
+Then emit the following token as your **final output** and end your response immediately:
 
-— Ralph 🤖
-```
-
-**REQUEST_CHANGES:**
-```
-<!-- RALPH-REVIEW: REQUEST_CHANGES -->
-
-The following issues need addressing before this can merge:
-
-1. **`path/to/file.rs` ~line N** — Description of the problem.
-   Suggested fix: ...
-
-— Ralph 🤖
-```
+<promise>STOP</promise>

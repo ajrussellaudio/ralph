@@ -1,26 +1,21 @@
 # Ralph — Fix Mode
 
-PR #{{PR_NUMBER}} in `{{REPO}}` has a `<!-- RALPH-REVIEW: REQUEST_CHANGES -->` comment that needs addressing.
+Task #{{TASK_ID}} needs fixes based on review notes in the local task database.
 
 ⚠️ **Never** use `gh pr comment --body "..."` — it hangs waiting for stdin. Always write the body to a temp file and use `--body-file <file> < /dev/null`.
 
-## Step 1 — Read the review
+## Step 1 — Read the review notes
 
-Use `gh pr view {{PR_NUMBER}} --repo {{REPO}} --comments` or GitHub MCP tools to read the REQUEST_CHANGES comment. Read **every** issue listed — you must address all of them in one pass, not just some.
+```bash
+TASK_BRANCH=$(sqlite3 {{DB_PATH}} "SELECT branch FROM tasks WHERE id={{TASK_ID}};")
+REVIEW_NOTES=$(sqlite3 {{DB_PATH}} "SELECT review_notes FROM tasks WHERE id={{TASK_ID}};")
+echo "$REVIEW_NOTES"
+```
 
 ## Step 2 — Check out the branch
 
-Look up the branch name:
-
 ```bash
-gh pr view {{PR_NUMBER}} --repo {{REPO}} --json headRefName --jq .headRefName < /dev/null
-```
-
-Then check it out:
-
-```bash
-git fetch origin
-git checkout <branch-name>
+git checkout "$TASK_BRANCH"
 ```
 
 ## Step 3 — Fix
@@ -28,14 +23,20 @@ git checkout <branch-name>
 - Implement fixes for every raised issue. Delegate large file reads to sub-agents.
 - Run `{{TEST_CMD}}` using a sub-agent. Fix any test failures.
 
-## Step 4 — Commit and push
+## Step 4 — Commit
 
 ```bash
-git commit -m "fix: address review comments on PR #{{PR_NUMBER}}"
-git push origin <branch-name>
+git add -A
+git commit -m "fix: address review notes for task #{{TASK_ID}}"
 ```
 
-## Step 5 — Stop
+## Step 5 — Update DB status
+
+```bash
+sqlite3 {{DB_PATH}} "UPDATE tasks SET status='needs_review_2' WHERE id={{TASK_ID}};"
+```
+
+## Step 6 — Stop
 
 Emit the following token as your **final output** and end your response immediately:
 

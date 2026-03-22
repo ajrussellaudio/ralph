@@ -1,66 +1,49 @@
 # Ralph — Review Mode (Round 2)
 
-You are verifying that round-1 review issues have been fixed on PR #{{PR_NUMBER}} in `{{REPO}}`.
+You are verifying that round-1 review issues have been fixed for task #{{TASK_ID}}.
 
 ⚠️ **Never** use `gh pr comment --body "..."` — it hangs waiting for stdin. Always write the body to a temp file and use `--body-file <file> < /dev/null`.
 
-## Step 1 — Find the original issues
+## Step 1 — Read the original issues
 
-Use `gh pr view {{PR_NUMBER}} --repo {{REPO}} --comments` or GitHub MCP tools to read the PR comment timeline. Find the `<!-- RALPH-REVIEW: REQUEST_CHANGES -->` comment and note every issue it listed.
+```bash
+TASK_BRANCH=$(sqlite3 {{DB_PATH}} "SELECT branch FROM tasks WHERE id={{TASK_ID}};")
+REVIEW_NOTES=$(sqlite3 {{DB_PATH}} "SELECT review_notes FROM tasks WHERE id={{TASK_ID}};")
+echo "$REVIEW_NOTES"
+```
 
 ## Step 2 — Verify fixes
 
-Delegate verification to a sub-agent. Do **not** re-review the whole PR.
+Delegate verification to a sub-agent. Do **not** re-review the whole diff.
 
 Launch a **general-purpose sub-agent** with this prompt:
 
-> "You are verifying fixes on PR #{{PR_NUMBER}} in `{{REPO}}`.
-> Get the diff with: `gh pr diff {{PR_NUMBER}} --repo {{REPO}}`
+> "You are verifying fixes on local branch `$TASK_BRANCH` against `{{FEATURE_BRANCH}}`.
+> Get the diff with: `git diff {{FEATURE_BRANCH}}...$TASK_BRANCH`
 > Run the test suite: `{{TEST_CMD}}`
 > The previous review raised these specific issues:
-> <paste the full body of the round 1 REQUEST_CHANGES comment here>
+> <paste the value of REVIEW_NOTES here>
 > Check only whether each of those issues has been resolved in the latest diff.
 > Do NOT raise new issues — only assess the original ones.
 > For each original issue, state: RESOLVED or UNRESOLVED (with a brief reason).
 > If all are RESOLVED, return exactly the word: LGTM"
 
-**If LGTM (all resolved):** post an APPROVED comment (see below), then emit the following token as your **final output** and end your response immediately:
-
-<promise>STOP</promise>
-
-**If any issues are UNRESOLVED:** this is the final round — post a REQUEST_CHANGES comment listing only the still-unresolved items. Then emit the following token as your **final output** and end your response immediately:
-
-<promise>STOP</promise>
-
-## Comment formats
-
-Post all review comments by writing the body to a temp file and using `--body-file` with stdin closed:
+**If LGTM (all resolved):** update the task status to `approved`:
 
 ```bash
-cat > /tmp/ralph-review.md << 'EOF'
-<comment body here>
-EOF
-gh pr comment {{PR_NUMBER}} --repo {{REPO}} --body-file /tmp/ralph-review.md < /dev/null
-rm /tmp/ralph-review.md
+sqlite3 {{DB_PATH}} "UPDATE tasks SET status='approved' WHERE id={{TASK_ID}};"
 ```
 
-**APPROVED:**
+Then emit the following token as your **final output** and end your response immediately:
+
+<promise>STOP</promise>
+
+**If any issues are UNRESOLVED:** this is the final round — update the DB with only the still-unresolved items (escape single quotes as `''`) and mark the task approved to avoid an infinite fix loop:
+
+```bash
+sqlite3 {{DB_PATH}} "UPDATE tasks SET status='approved', review_notes='<unresolved items>' WHERE id={{TASK_ID}};"
 ```
-<!-- RALPH-REVIEW: APPROVED -->
 
-LGTM — no blocking issues found. ✅
+Then emit the following token as your **final output** and end your response immediately:
 
-— Ralph 🤖
-```
-
-**REQUEST_CHANGES:**
-```
-<!-- RALPH-REVIEW: REQUEST_CHANGES -->
-
-The following issues need addressing before this can merge:
-
-1. **`path/to/file.rs` ~line N** — Description of the problem.
-   Suggested fix: ...
-
-— Ralph 🤖
-```
+<promise>STOP</promise>
