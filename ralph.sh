@@ -28,7 +28,7 @@ MODES_DIR="$SCRIPT_DIR/modes"
 WORKTREE_DIR="${GIT_ROOT%/*}/$(basename "$GIT_ROOT")-ralph-workspace"
 
 # Parse a value from project.toml by key name.
-# Handles quoted strings (repo = "owner/repo") and bare integers (permanent_issue = 1).
+# Handles quoted strings (repo = "owner/repo") and unquoted values (build = "").
 toml_get() {
   grep -E "^$1 *=" "$SCRIPT_DIR/project.toml" \
     | sed -E 's/^[^=]+= *"?([^"]*)"? *$/\1/'
