@@ -2,6 +2,8 @@
 
 You are implementing GitHub issue #{{ISSUE_NUMBER}} in the `{{REPO}}` repository.
 
+⚠️ **Never** use `gh pr comment --body "..."` — it hangs waiting for stdin. Always write the body to a temp file and use `--body-file <file> < /dev/null`.
+
 ## Step 1 — Get up to speed
 
 - Run `git log --oneline -10` to see recent commits.

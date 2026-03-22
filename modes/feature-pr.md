@@ -2,6 +2,8 @@
 
 All task issues under `{{FEATURE_LABEL}}` are closed and all task PRs have been merged into `{{FEATURE_BRANCH}}`. Your job is to open a pull request from `{{FEATURE_BRANCH}}` to `main` for human review.
 
+⚠️ **Never** use `gh pr comment --body "..."` — it hangs waiting for stdin. Always write the body to a temp file and use `--body-file <file> < /dev/null`.
+
 ## Step 1 — Verify no existing PR
 
 Check whether a `{{FEATURE_BRANCH}} → main` PR already exists:

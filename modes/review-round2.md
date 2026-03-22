@@ -2,6 +2,8 @@
 
 You are verifying that round-1 review issues have been fixed on PR #{{PR_NUMBER}} in `{{REPO}}`.
 
+⚠️ **Never** use `gh pr comment --body "..."` — it hangs waiting for stdin. Always write the body to a temp file and use `--body-file <file> < /dev/null`.
+
 ## Step 1 — Find the original issues
 
 Use `gh pr view {{PR_NUMBER}} --repo {{REPO}} --comments` or GitHub MCP tools to read the PR comment timeline. Find the `<!-- RALPH-REVIEW: REQUEST_CHANGES -->` comment and note every issue it listed.
