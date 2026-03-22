@@ -44,6 +44,7 @@ fi
 ## Step 4 — Delete the task branch
 
 ```bash
+git push origin --delete "$TASK_BRANCH" 2>/dev/null || true
 git branch -d "$TASK_BRANCH"
 ```
 

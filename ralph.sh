@@ -275,7 +275,7 @@ determine_mode() {
       && [[ -n "$TASK_ID" ]]; then
     local fix_count
     fix_count=$(sqlite3 "$DB_PATH" \
-      "SELECT fix_count FROM tasks WHERE id=$TASK_ID;" 2>/dev/null || echo "0")
+      "SELECT fix_count FROM tasks WHERE id='$TASK_ID';" 2>/dev/null || echo "0")
     if [[ "$fix_count" -ge 2 ]]; then
       MODE="force-approve"
     else
