@@ -2,14 +2,6 @@
 
 PR #{{PR_NUMBER}} in `{{REPO}}` has already had two rounds of review and fixes. Approve it unconditionally.
 
-## Step 0 — Sync workspace
-
-Before doing anything else:
-
-- Run `git fetch origin`
-- Run `git reset --hard origin/main`
-  (The worktree runs in detached HEAD mode — do not run `git checkout main`.)
-
 ## Step 1 — Approve
 
 Post this comment:
