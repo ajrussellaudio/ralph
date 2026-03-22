@@ -2,8 +2,6 @@
 
 PR #{{PR_NUMBER}} in `{{REPO}}` has been approved. Merge it.
 
-Read `ralph/project.md` for the build and test commands.
-
 ## Step 1 — Verify CI
 
 Check that all CI checks have passed:
@@ -38,7 +36,7 @@ Find all open `ralph/issue-*` PRs with a PR number greater than {{PR_NUMBER}}. F
   git fetch origin ralph/issue-<M>
   git rebase --onto main <old-tip-sha> ralph/issue-<M>
   ```
-- If the rebase succeeds and the test command (from `ralph/project.md`) passes: `git push --force-with-lease origin ralph/issue-<M>`
+- If the rebase succeeds and `{{TEST_CMD}}` passes: `git push --force-with-lease origin ralph/issue-<M>`
 - **If there are conflicts:** attempt to resolve them — read the conflicting files, understand what both sides are doing, and apply the resolution that preserves both sets of changes. Run tests to verify. If tests pass, continue the rebase and push.
 - **If you cannot resolve a conflict confidently** (e.g. tests keep failing, or the conflict is in generated/binary files): run `git rebase --abort`, open a GitHub issue titled `⚠️ Downstream rebase conflict: ralph/issue-<M>` describing the conflicting files, and stop.
 

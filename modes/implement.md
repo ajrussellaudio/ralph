@@ -2,8 +2,6 @@
 
 You are implementing GitHub issue #{{ISSUE_NUMBER}} in the `{{REPO}}` repository.
 
-Read `ralph/project.md` for the build and test commands.
-
 ## Step 1 — Get up to speed
 
 - Run `git log --oneline -10` to see recent commits.
@@ -17,7 +15,7 @@ Read `ralph/project.md` for the build and test commands.
 
 ## Step 3 — Verify
 
-Run the build and test commands from `ralph/project.md` using a sub-agent. **Both must pass before you continue.**
+Run `{{BUILD_CMD}}` (skip if empty) and `{{TEST_CMD}}` using a sub-agent. **Both must pass before you continue.**
 
 If either check fails and you cannot fix it after a genuine effort, **do not open a PR**. Instead:
 
