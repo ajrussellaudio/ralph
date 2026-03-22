@@ -38,10 +38,10 @@ Then emit the following token as your **final output** and end your response imm
 
 <promise>STOP</promise>
 
-**If any issues are UNRESOLVED:** this is the final round — update the DB with only the still-unresolved items (escape single quotes as `''`) and mark the task approved to avoid an infinite fix loop:
+**If any issues are UNRESOLVED:** write only the still-unresolved items to the DB (escape single quotes as `''`) and set status back to `needs_fix` to trigger another fix cycle (or force-approve if the fix cap is reached):
 
 ```bash
-sqlite3 {{DB_PATH}} "UPDATE tasks SET status='approved', review_notes='<unresolved items>' WHERE id={{TASK_ID}};"
+sqlite3 {{DB_PATH}} "UPDATE tasks SET status='needs_fix', review_notes='<unresolved items>' WHERE id={{TASK_ID}};"
 ```
 
 Then emit the following token as your **final output** and end your response immediately:

@@ -181,9 +181,13 @@ CREATE TABLE IF NOT EXISTS tasks (
   status       TEXT    DEFAULT 'pending',
   branch       TEXT,
   review_notes TEXT,
+  fix_count    INTEGER DEFAULT 0,
   blocked_by   INTEGER REFERENCES tasks(id)
 );
 SQL
+  # Migrate existing DBs that predate the fix_count column.
+  sqlite3 "$DB_PATH" \
+    "ALTER TABLE tasks ADD COLUMN fix_count INTEGER DEFAULT 0;" 2>/dev/null || true
 }
 
 init_storage
@@ -228,7 +232,7 @@ git -C "$GIT_ROOT" worktree add --detach "$WORKTREE_DIR" "origin/$FEATURE_BRANCH
 # ── Routing ────────────────────────────────────────────────────────────────────
 
 # Populates MODE and TASK_ID by querying the local SQLite task database.
-# MODE is one of: implement | review | review-round2 | fix | merge | feature-pr | complete
+# MODE is one of: implement | review | review-round2 | fix | force-approve | merge | feature-pr | complete
 determine_mode() {
   TASK_ID=""
   PR_NUMBER=""  # kept for compatibility with review.md / fix.md (always empty now)
@@ -265,11 +269,18 @@ determine_mode() {
     return
   fi
 
-  # 4. needs_fix → fix
+  # 4. needs_fix → force-approve (fix_count >= 2) or fix
   if TASK_ID=$(sqlite3 "$DB_PATH" \
       "SELECT id FROM tasks WHERE status='needs_fix' ORDER BY id LIMIT 1;" 2>/dev/null) \
       && [[ -n "$TASK_ID" ]]; then
-    MODE="fix"
+    local fix_count
+    fix_count=$(sqlite3 "$DB_PATH" \
+      "SELECT fix_count FROM tasks WHERE id=$TASK_ID;" 2>/dev/null || echo "0")
+    if [[ "$fix_count" -ge 2 ]]; then
+      MODE="force-approve"
+    else
+      MODE="fix"
+    fi
     echo "  ▶  Mode: $MODE  (Task #$TASK_ID)"
     return
   fi
