@@ -1,17 +1,27 @@
 # Ralph — Implement Mode
 
-You are implementing GitHub issue #{{ISSUE_NUMBER}} in the `{{REPO}}` repository.
+You are implementing task #{{TASK_ID}} from the local task database.
 
 ⚠️ **Never** use `gh pr comment --body "..."` — it hangs waiting for stdin. Always write the body to a temp file and use `--body-file <file> < /dev/null`.
 
 ## Step 1 — Get up to speed
 
+Read the task details from the DB:
+
+```bash
+sqlite3 {{DB_PATH}} "SELECT title FROM tasks WHERE id={{TASK_ID}};"
+sqlite3 {{DB_PATH}} "SELECT body FROM tasks WHERE id={{TASK_ID}};"
+```
+
+PRD overview:
+
+> {{PRD_OVERVIEW}}
+
 - Run `git log --oneline -10` to see recent commits.
-- Read issue #{{ISSUE_NUMBER}} using GitHub MCP tools. The acceptance criteria are the source of truth.
 
 ## Step 2 — Implement
 
-- Check out a new branch: `git checkout -b ralph/issue-{{ISSUE_NUMBER}}`
+- Check out a new local branch: `git checkout -b ralph/task-{{TASK_ID}}`
 - Implement everything required to satisfy all acceptance criteria.
 - Delegate expensive work to sub-agents where possible (running the test suite, reading large files, summarising command output) to keep your primary context window lean.
 
@@ -19,7 +29,7 @@ You are implementing GitHub issue #{{ISSUE_NUMBER}} in the `{{REPO}}` repository
 
 Run `{{BUILD_CMD}}` (skip if empty) and `{{TEST_CMD}}` using a sub-agent. **Both must pass before you continue.**
 
-If either check fails and you cannot fix it after a genuine effort, **do not open a PR**. Instead:
+If either check fails and you cannot fix it after a genuine effort, **do not commit**. Instead:
 
 - Revert any broken changes (`git checkout -- .` or `git stash`)
 - Emit the following token as your final output and stop:
@@ -42,24 +52,25 @@ If the checks passed:
 
   ## [Unreleased]
   ```
-- Add an entry under `## [Unreleased]` using the appropriate subsection (`### Added`, `### Changed`, `### Fixed`, `### Removed`). One concise bullet per logical change. Include the issue number in parentheses, e.g.:
+- Add an entry under `## [Unreleased]` using the appropriate subsection (`### Added`, `### Changed`, `### Fixed`, `### Removed`). One concise bullet per logical change. Include the task ID in parentheses, e.g.:
   ```
   ### Added
-  - Quit confirmation modal when there are unsaved changes (#53)
+  - Quit confirmation modal when there are unsaved changes (task #5)
   ```
 - If `## [Unreleased]` already exists, append to the correct subsection (or create it if needed). Do not create a new `## [Unreleased]` block.
 - Do not add version headers or dates.
 
 **Commit** all changes (code + CHANGELOG) together using conventional commits (`feat:`, `fix:`, `chore:`, `refactor:`).
 
-**Open a GitHub PR** from `ralph/issue-{{ISSUE_NUMBER}}` targeting `{{FEATURE_BRANCH}}`. The PR body should:
-- Reference the issue with `Closes #{{ISSUE_NUMBER}}`
-- Summarise what was implemented
-- Note any limitations or known rough edges
+**Do not** `git push` or `gh pr create`.
 
-Do **not** close the GitHub issue manually — it closes automatically when the PR is merged.
+## Step 5 — Update DB status
 
-## Step 5 — Stop
+```bash
+sqlite3 {{DB_PATH}} "UPDATE tasks SET status='needs_review', branch='ralph/task-{{TASK_ID}}' WHERE id={{TASK_ID}};"
+```
+
+## Step 6 — Stop
 
 Your work this iteration is done.
 

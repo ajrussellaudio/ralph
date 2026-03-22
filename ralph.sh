@@ -13,7 +13,7 @@
 #   2. Determines which mode to run (implement, review, review-round2, fix,
 #      force-approve, or merge)
 #   3. Loads the mode-specific prompt from ralph/modes/<mode>.md
-#   4. Substitutes {{REPO}}, {{PR_NUMBER}}, {{ISSUE_NUMBER}}, {{FEATURE_BRANCH}}
+#   4. Substitutes {{REPO}}, {{PR_NUMBER}}, {{TASK_ID}}, {{FEATURE_BRANCH}}
 #      placeholders
 #   5. Runs Copilot with that focused, self-contained prompt
 #
@@ -227,116 +227,106 @@ git -C "$GIT_ROOT" worktree add --detach "$WORKTREE_DIR" "origin/$FEATURE_BRANCH
 
 # ── Routing ────────────────────────────────────────────────────────────────────
 
-# Populates MODE, PR_NUMBER, ISSUE_NUMBER based on current GitHub state.
-# MODE is one of: implement | review | review-round2 | fix | force-approve | merge | complete
+# Populates MODE and TASK_ID by querying the local SQLite task database.
+# MODE is one of: implement | review | review-round2 | fix | merge | feature-pr | complete
 determine_mode() {
-  PR_NUMBER=""
-  ISSUE_NUMBER=""
+  TASK_ID=""
+  PR_NUMBER=""  # kept for compatibility with review.md / fix.md (always empty now)
 
   echo "  🔄 Syncing workspace…"
   (cd "$WORKTREE_DIR" && git fetch origin && git reset --hard "origin/$FEATURE_BRANCH") > /dev/null 2>&1
 
-  echo "  🔍 Checking for open ralph PRs in ${REPO}…"
-  OPEN_RALPH_PRS=$(gh pr list --repo "$REPO" --state open \
-    --base "$FEATURE_BRANCH" \
-    --json number,headRefName \
-    --jq '[.[] | select(.headRefName | startswith("ralph/issue-"))] | sort_by(.number)' \
-    < /dev/null 2>/dev/null || echo "[]")
+  echo "  🔍 Checking task status in DB…"
 
-  PR_COUNT=$(echo "$OPEN_RALPH_PRS" | jq length)
+  # 1. needs_review → review
+  if TASK_ID=$(sqlite3 "$DB_PATH" \
+      "SELECT id FROM tasks WHERE status='needs_review' ORDER BY id LIMIT 1;" 2>/dev/null) \
+      && [[ -n "$TASK_ID" ]]; then
+    MODE="review"
+    echo "  ▶  Mode: $MODE  (Task #$TASK_ID)"
+    return
+  fi
 
-  if [[ "$PR_COUNT" -gt 0 ]]; then
-    PR_NUMBER=$(echo "$OPEN_RALPH_PRS" | jq -r '.[0].number')
+  # 2. approved → merge
+  if TASK_ID=$(sqlite3 "$DB_PATH" \
+      "SELECT id FROM tasks WHERE status='approved' ORDER BY id LIMIT 1;" 2>/dev/null) \
+      && [[ -n "$TASK_ID" ]]; then
+    MODE="merge"
+    echo "  ▶  Mode: $MODE  (Task #$TASK_ID)"
+    return
+  fi
 
-    COMMENT_BODIES=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-      --json comments --jq '[.comments[].body] | join("\n---\n")' \
-      < /dev/null 2>/dev/null || echo "")
+  # 3. needs_review_2 → review-round2
+  if TASK_ID=$(sqlite3 "$DB_PATH" \
+      "SELECT id FROM tasks WHERE status='needs_review_2' ORDER BY id LIMIT 1;" 2>/dev/null) \
+      && [[ -n "$TASK_ID" ]]; then
+    MODE="review-round2"
+    echo "  ▶  Mode: $MODE  (Task #$TASK_ID)"
+    return
+  fi
 
-    APPROVED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: APPROVED" 2>/dev/null || true)
-    CHANGES_REQUESTED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: REQUEST_CHANGES" 2>/dev/null || true)
+  # 4. needs_fix → fix
+  if TASK_ID=$(sqlite3 "$DB_PATH" \
+      "SELECT id FROM tasks WHERE status='needs_fix' ORDER BY id LIMIT 1;" 2>/dev/null) \
+      && [[ -n "$TASK_ID" ]]; then
+    MODE="fix"
+    echo "  ▶  Mode: $MODE  (Task #$TASK_ID)"
+    return
+  fi
 
-    if [[ "${APPROVED:-0}" -gt 0 ]]; then
-      MODE="merge"
-    elif [[ "${CHANGES_REQUESTED:-0}" -ge 2 ]]; then
-      MODE="force-approve"
-    elif [[ "${CHANGES_REQUESTED:-0}" -eq 1 ]]; then
-      # If commits were pushed after the REQUEST_CHANGES comment → round 2 review
-      # Otherwise → fix mode (no new commits yet)
-      LAST_RC_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-        --json comments \
-        --jq '[.comments[] | select(.body | contains("RALPH-REVIEW: REQUEST_CHANGES"))] | last | .createdAt // ""' \
-        < /dev/null 2>/dev/null || echo "")
-      LATEST_COMMIT_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-        --json commits \
-        --jq '.commits | last | .committedDate // ""' \
-        < /dev/null 2>/dev/null || echo "")
+  # 5. in_progress → fix (resume interrupted work)
+  if TASK_ID=$(sqlite3 "$DB_PATH" \
+      "SELECT id FROM tasks WHERE status='in_progress' ORDER BY id LIMIT 1;" 2>/dev/null) \
+      && [[ -n "$TASK_ID" ]]; then
+    MODE="fix"
+    echo "  ▶  Mode: $MODE  (Task #$TASK_ID — resuming)"
+    return
+  fi
 
-      if [[ -n "$LATEST_COMMIT_TIME" && -n "$LAST_RC_TIME" && "$LATEST_COMMIT_TIME" > "$LAST_RC_TIME" ]]; then
-        MODE="review-round2"
-      else
-        MODE="fix"
-      fi
-    else
-      MODE="review"
-    fi
+  # 6. unblocked pending task → implement (high priority first, then lowest id)
+  if TASK_ID=$(sqlite3 "$DB_PATH" \
+      "SELECT id FROM tasks
+       WHERE status='pending'
+         AND (blocked_by IS NULL
+              OR blocked_by IN (SELECT id FROM tasks WHERE status='done'))
+       ORDER BY CASE priority WHEN 'high' THEN 0 ELSE 1 END, id
+       LIMIT 1;" 2>/dev/null) \
+      && [[ -n "$TASK_ID" ]]; then
+    MODE="implement"
+    echo "  ▶  Mode: $MODE  (Task #$TASK_ID)"
+    return
+  fi
 
-    echo "  ▶  Mode: $MODE  (PR #$PR_NUMBER)"
-  else
-    echo "  🔍 No open ralph PRs — checking issues…"
+  # 7. all tasks done → feature-pr or complete
+  local total_tasks done_tasks
+  total_tasks=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM tasks;" 2>/dev/null || echo "0")
+  done_tasks=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM tasks WHERE status='done';" 2>/dev/null || echo "0")
 
-    # Pick highest-priority open issue: high-priority label first, then lowest number.
-    # PRD mode: --label scopes to prd/<label>; exclude the PRD issue itself (prd) and blocked.
-    # Standalone mode: no label filter; additionally exclude any issue carrying a prd/* label.
-    if [[ -n "$FEATURE_LABEL" ]]; then
-      ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
-        --label "$FEATURE_LABEL" \
-        --json number,labels --limit 100 \
-        --jq '
-          [.[] | select(.labels | map(.name) | (any(. == "prd") or any(. == "blocked")) | not)]
-          | (
-              (map(select(.labels | map(.name) | any(. == "high priority"))) | sort_by(.number) | first)
-              // (sort_by(.number) | first)
-            )
-          | .number // empty
-        ' \
-        < /dev/null 2>/dev/null || echo "")
-    else
-      ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
-        --json number,labels --limit 100 \
-        --jq '
-          [.[] | select(.labels | map(.name) | (any(. == "prd") or any(startswith("prd/")) or any(. == "blocked")) | not)]
-          | (
-              (map(select(.labels | map(.name) | any(. == "high priority"))) | sort_by(.number) | first)
-              // (sort_by(.number) | first)
-            )
-          | .number // empty
-        ' \
-        < /dev/null 2>/dev/null || echo "")
-    fi
-
-    if [[ -n "$ISSUE_NUMBER" ]]; then
-      MODE="implement"
-      echo "  ▶  Mode: $MODE  (Issue #$ISSUE_NUMBER)"
-    elif [[ -n "$FEATURE_LABEL" && "$FEATURE_BRANCH" != "main" ]]; then
-      # PRD mode with no remaining task issues — check for an existing feat→main PR
+  if [[ "$total_tasks" -gt 0 && "$total_tasks" == "$done_tasks" ]]; then
+    if [[ -n "$FEATURE_LABEL" && "$FEATURE_BRANCH" != "main" ]]; then
       FEATURE_PR_COUNT=$(gh pr list --repo "$REPO" --state open \
         --base "main" \
         --head "$FEATURE_BRANCH" \
         --json number --jq 'length' \
-        < /dev/null 2>/dev/null)
+        < /dev/null 2>/dev/null || echo "0")
 
       if [[ "$FEATURE_PR_COUNT" == "0" ]]; then
         MODE="feature-pr"
-        echo "  ▶  Mode: $MODE  (all task issues closed, opening feat→main PR)"
+        echo "  ▶  Mode: $MODE  (all tasks done, opening feat→main PR)"
       else
         MODE="complete"
-        echo "  ▶  Mode: $MODE  (feat→main PR already open or check failed)"
+        echo "  ▶  Mode: $MODE  (feat→main PR already open)"
       fi
     else
       MODE="complete"
-      echo "  ▶  Mode: $MODE  (no open issues or PRs)"
+      echo "  ▶  Mode: $MODE  (all tasks done)"
     fi
+    return
   fi
+
+  # 8. Default fallback
+  MODE="complete"
+  echo "  ▶  Mode: $MODE  (no actionable tasks)"
 }
 
 # Loads the mode file and substitutes all {{PLACEHOLDER}} values.
@@ -355,8 +345,7 @@ build_prompt() {
   PROMPT=$(cat "$mode_file")
   PROMPT="${PROMPT//\{\{REPO\}\}/$REPO}"
   PROMPT="${PROMPT//\{\{PR_NUMBER\}\}/$PR_NUMBER}"
-  PROMPT="${PROMPT//\{\{ISSUE_NUMBER\}\}/$ISSUE_NUMBER}"
-  PROMPT="${PROMPT//\{\{TASK_ID\}\}/$ISSUE_NUMBER}"
+  PROMPT="${PROMPT//\{\{TASK_ID\}\}/$TASK_ID}"
   PROMPT="${PROMPT//\{\{BUILD_CMD\}\}/$BUILD_CMD}"
   PROMPT="${PROMPT//\{\{TEST_CMD\}\}/$TEST_CMD}"
   PROMPT="${PROMPT//\{\{FEATURE_BRANCH\}\}/$FEATURE_BRANCH}"
@@ -395,7 +384,7 @@ seed_if_empty() {
 
   MODE="seed"
   PR_NUMBER=""
-  ISSUE_NUMBER=""
+  TASK_ID=""
   build_prompt
 
   (cd "$WORKTREE_DIR" && copilot \
