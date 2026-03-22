@@ -2,19 +2,17 @@
 # Ralph — Long-running Copilot CLI agent loop with bash-side mode routing
 #
 # Usage:
-#   ./ralph.sh <max_iterations> [--label=<label>]
+#   ./ralph.sh <max_iterations>
 #
-# Examples:
+# Example:
 #   ./ralph.sh 20
-#   ./ralph.sh 20 --label=foo-widget
 #
 # Each iteration:
 #   1. Checks GitHub for open ralph PRs or open issues (in bash)
 #   2. Determines which mode to run (implement, review, review-round2, fix,
 #      force-approve, or merge)
 #   3. Loads the mode-specific prompt from ralph/modes/<mode>.md
-#   4. Substitutes {{REPO}}, {{PR_NUMBER}}, {{ISSUE_NUMBER}}, {{FEATURE_BRANCH}}
-#      placeholders
+#   4. Substitutes {{REPO}}, {{PR_NUMBER}}, {{ISSUE_NUMBER}} placeholders
 #   5. Runs Copilot with that focused, self-contained prompt
 #
 # The loop stops early if Copilot emits <promise>COMPLETE</promise> or if
@@ -27,58 +25,24 @@ GIT_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 MODES_DIR="$SCRIPT_DIR/modes"
 WORKTREE_DIR="${GIT_ROOT%/*}/$(basename "$GIT_ROOT")-ralph-workspace"
 
-# Parse a value from project.toml by key name.
-# Handles quoted strings (repo = "owner/repo") and bare integers (permanent_issue = 1).
-toml_get() {
-  grep -E "^$1 *=" "$SCRIPT_DIR/project.toml" \
-    | sed -E 's/^[^=]+= *"?([^"]*)"? *$/\1/'
-}
-
-REPO=$(toml_get repo)
-BUILD_CMD=$(toml_get build)
-TEST_CMD=$(toml_get test)
+# Extract repo slug from project.md (line: "**GitHub repo:** `owner/name`")
+REPO=$(grep -m1 'GitHub repo' "$SCRIPT_DIR/project.md" | grep -oE '`[^`]+`' | tr -d '`')
 
 # ── Argument validation ────────────────────────────────────────────────────────
 
-usage() {
-  echo "Usage: $(basename "$0") <max_iterations> [--label=<label>]"
+if [[ $# -ne 1 ]] || ! [[ "$1" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Usage: $(basename "$0") <max_iterations>"
   echo ""
   echo "  max_iterations  A positive integer — how many Copilot iterations to"
   echo "                  allow before giving up. There is no default; you must"
   echo "                  decide how many loops is reasonable for your task."
   echo ""
-  echo "  --label=<label> Optional feature label. Derives FEATURE_BRANCH=feat/<label>"
-  echo "                  and FEATURE_LABEL=prd/<label>. When omitted, FEATURE_BRANCH"
-  echo "                  defaults to 'main'."
-  echo ""
-  echo "Examples:"
+  echo "Example:"
   echo "  $(basename "$0") 20"
-  echo "  $(basename "$0") 20 --label=foo-widget"
-}
-
-if [[ $# -lt 1 || $# -gt 2 ]]; then
-  usage
-  exit 1
-fi
-
-if ! [[ "$1" =~ ^[1-9][0-9]*$ ]]; then
-  usage
   exit 1
 fi
 
 MAX_ITERATIONS="$1"
-FEATURE_LABEL=""
-FEATURE_BRANCH="main"
-
-if [[ $# -eq 2 ]]; then
-  if [[ "$2" =~ ^--label=(.+)$ ]]; then
-    FEATURE_LABEL="prd/${BASH_REMATCH[1]}"
-    FEATURE_BRANCH="feat/${BASH_REMATCH[1]}"
-  else
-    usage
-    exit 1
-  fi
-fi
 
 # ── Preflight checks ───────────────────────────────────────────────────────────
 
@@ -92,39 +56,9 @@ if [[ ! -d "$MODES_DIR" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$SCRIPT_DIR/project.toml" ]]; then
-  echo "Error: project.toml not found at $SCRIPT_DIR/project.toml"
-  echo "Copy project.example.toml to project.toml and fill in your values."
-  exit 1
-fi
-
 if [[ -z "$REPO" ]]; then
-  echo "Error: Could not read 'repo' from $SCRIPT_DIR/project.toml"
+  echo "Error: Could not extract repo slug from $SCRIPT_DIR/project.md"
   exit 1
-fi
-
-if [[ -z "$TEST_CMD" ]]; then
-  echo "Error: Could not read 'test' from $SCRIPT_DIR/project.toml"
-  exit 1
-fi
-
-# In PRD mode, validate that either prd/* issues exist or the feature branch already
-# exists on origin. If neither is true, the label is almost certainly a typo.
-if [[ -n "$FEATURE_LABEL" ]]; then
-  if PRD_ISSUE_COUNT=$(gh issue list --repo "$REPO" --state open \
-      --label "$FEATURE_LABEL" \
-      --json number --jq 'length' \
-      < /dev/null 2>/dev/null); then
-    if [[ "$PRD_ISSUE_COUNT" -eq 0 ]]; then
-      if ! git -C "$GIT_ROOT" ls-remote --exit-code --heads origin "$FEATURE_BRANCH" > /dev/null 2>&1; then
-        echo "Error: No open issues with label '${FEATURE_LABEL}' found, and branch 'origin/${FEATURE_BRANCH}' does not exist."
-        echo "Check that --label matches an existing PRD label, or create the feature branch first."
-        exit 1
-      fi
-    fi
-  else
-    echo "Warning: Could not reach GitHub API; skipping PRD preflight check."
-  fi
 fi
 
 # ── Worktree setup ─────────────────────────────────────────────────────────────
@@ -151,18 +85,7 @@ fi
 
 echo ""
 echo "  Creating worktree at ${WORKTREE_DIR} …"
-
-# If a feature branch was specified and doesn't yet exist on origin, create it.
-if [[ "$FEATURE_BRANCH" != "main" ]]; then
-  if ! git -C "$GIT_ROOT" ls-remote --exit-code --heads origin "$FEATURE_BRANCH" > /dev/null 2>&1; then
-    echo "  🌿 Branch origin/${FEATURE_BRANCH} not found — creating from origin/main and pushing…"
-    git -C "$GIT_ROOT" fetch origin main > /dev/null
-    git -C "$GIT_ROOT" push origin "origin/main:refs/heads/${FEATURE_BRANCH}"
-    echo "  ✅  Branch ${FEATURE_BRANCH} created on origin."
-  fi
-fi
-
-git -C "$GIT_ROOT" worktree add --detach "$WORKTREE_DIR" "origin/$FEATURE_BRANCH"
+git -C "$GIT_ROOT" worktree add --detach "$WORKTREE_DIR" origin/main
 
 # ── Routing ────────────────────────────────────────────────────────────────────
 
@@ -173,11 +96,10 @@ determine_mode() {
   ISSUE_NUMBER=""
 
   echo "  🔄 Syncing workspace…"
-  (cd "$WORKTREE_DIR" && git fetch origin && git reset --hard "origin/$FEATURE_BRANCH") > /dev/null 2>&1
+  (cd "$WORKTREE_DIR" && git fetch origin && git reset --hard origin/main) > /dev/null 2>&1
 
   echo "  🔍 Checking for open ralph PRs in ${REPO}…"
   OPEN_RALPH_PRS=$(gh pr list --repo "$REPO" --state open \
-    --base "$FEATURE_BRANCH" \
     --json number,headRefName \
     --jq '[.[] | select(.headRefName | startswith("ralph/issue-"))] | sort_by(.number)' \
     < /dev/null 2>/dev/null || echo "[]")
@@ -191,16 +113,24 @@ determine_mode() {
       --json comments --jq '[.comments[].body] | join("\n---\n")' \
       < /dev/null 2>/dev/null || echo "")
 
-    APPROVED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: APPROVED" 2>/dev/null || true)
+    APPROVED_COUNT=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: APPROVED" 2>/dev/null || true)
     CHANGES_REQUESTED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: REQUEST_CHANGES" 2>/dev/null || true)
 
-    if [[ "${APPROVED:-0}" -gt 0 ]]; then
+    # Route based on the *last* RALPH-REVIEW comment, not just whether any approval exists.
+    # This prevents an infinite loop where merge mode posts REQUEST_CHANGES (CI failure)
+    # and routing blindly routes back to merge because an older APPROVED comment exists.
+    LAST_REVIEW_TYPE=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+      --json comments \
+      --jq '[.comments[] | select(.body | test("RALPH-REVIEW:"))] | last | .body |
+        if test("RALPH-REVIEW: APPROVED") then "APPROVED"
+        elif test("RALPH-REVIEW: REQUEST_CHANGES") then "REQUEST_CHANGES"
+        else "" end' \
+      < /dev/null 2>/dev/null || echo "")
+
+    if [[ "$LAST_REVIEW_TYPE" == "APPROVED" ]]; then
       MODE="merge"
-    elif [[ "${CHANGES_REQUESTED:-0}" -ge 2 ]]; then
-      MODE="force-approve"
-    elif [[ "${CHANGES_REQUESTED:-0}" -eq 1 ]]; then
-      # If commits were pushed after the REQUEST_CHANGES comment → round 2 review
-      # Otherwise → fix mode (no new commits yet)
+    elif [[ "$LAST_REVIEW_TYPE" == "REQUEST_CHANGES" ]]; then
+      # Check whether commits were pushed after the last REQUEST_CHANGES comment
       LAST_RC_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
         --json comments \
         --jq '[.comments[] | select(.body | contains("RALPH-REVIEW: REQUEST_CHANGES"))] | last | .createdAt // ""' \
@@ -211,7 +141,15 @@ determine_mode() {
         < /dev/null 2>/dev/null || echo "")
 
       if [[ -n "$LATEST_COMMIT_TIME" && -n "$LAST_RC_TIME" && "$LATEST_COMMIT_TIME" > "$LAST_RC_TIME" ]]; then
-        MODE="review-round2"
+        # New commits were pushed after the last RC.
+        if [[ "${APPROVED_COUNT:-0}" -gt 0 ]]; then
+          # PR already cleared a review pass — go straight to merge (CI will be re-checked there)
+          MODE="merge"
+        elif [[ "${CHANGES_REQUESTED:-0}" -ge 2 ]]; then
+          MODE="force-approve"
+        else
+          MODE="review-round2"
+        fi
       else
         MODE="fix"
       fi
@@ -223,54 +161,22 @@ determine_mode() {
   else
     echo "  🔍 No open ralph PRs — checking issues…"
 
-    # Pick highest-priority open issue: high-priority label first, then lowest number.
-    # PRD mode: --label scopes to prd/<label>; exclude the PRD issue itself (prd) and blocked.
-    # Standalone mode: no label filter; additionally exclude any issue carrying a prd/* label.
-    if [[ -n "$FEATURE_LABEL" ]]; then
-      ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
-        --label "$FEATURE_LABEL" \
-        --json number,labels --limit 100 \
-        --jq '
-          [.[] | select(.labels | map(.name) | (any(. == "prd") or any(. == "blocked")) | not)]
-          | (
-              (map(select(.labels | map(.name) | any(. == "high priority"))) | sort_by(.number) | first)
-              // (sort_by(.number) | first)
-            )
-          | .number // empty
-        ' \
-        < /dev/null 2>/dev/null || echo "")
-    else
-      ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
-        --json number,labels --limit 100 \
-        --jq '
-          [.[] | select(.labels | map(.name) | (any(. == "prd") or any(startswith("prd/")) or any(. == "blocked")) | not)]
-          | (
-              (map(select(.labels | map(.name) | any(. == "high priority"))) | sort_by(.number) | first)
-              // (sort_by(.number) | first)
-            )
-          | .number // empty
-        ' \
-        < /dev/null 2>/dev/null || echo "")
-    fi
+    # Pick highest-priority open issue: high-priority label first, then lowest number
+    ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
+      --json number,labels --limit 100 \
+      --jq '
+        [.[] | select(.labels | map(.name) | (contains(["prd"]) or contains(["blocked"])) | not)]
+        | (
+            (map(select(.labels | map(.name) | contains(["high priority"]))) | sort_by(.number) | first)
+            // (sort_by(.number) | first)
+          )
+        | .number // empty
+      ' \
+      < /dev/null 2>/dev/null || echo "")
 
     if [[ -n "$ISSUE_NUMBER" ]]; then
       MODE="implement"
       echo "  ▶  Mode: $MODE  (Issue #$ISSUE_NUMBER)"
-    elif [[ -n "$FEATURE_LABEL" && "$FEATURE_BRANCH" != "main" ]]; then
-      # PRD mode with no remaining task issues — check for an existing feat→main PR
-      FEATURE_PR_COUNT=$(gh pr list --repo "$REPO" --state open \
-        --base "main" \
-        --head "$FEATURE_BRANCH" \
-        --json number --jq 'length' \
-        < /dev/null 2>/dev/null)
-
-      if [[ "$FEATURE_PR_COUNT" == "0" ]]; then
-        MODE="feature-pr"
-        echo "  ▶  Mode: $MODE  (all task issues closed, opening feat→main PR)"
-      else
-        MODE="complete"
-        echo "  ▶  Mode: $MODE  (feat→main PR already open or check failed)"
-      fi
     else
       MODE="complete"
       echo "  ▶  Mode: $MODE  (no open issues or PRs)"
@@ -290,10 +196,6 @@ build_prompt() {
   PROMPT="${PROMPT//\{\{REPO\}\}/$REPO}"
   PROMPT="${PROMPT//\{\{PR_NUMBER\}\}/$PR_NUMBER}"
   PROMPT="${PROMPT//\{\{ISSUE_NUMBER\}\}/$ISSUE_NUMBER}"
-  PROMPT="${PROMPT//\{\{BUILD_CMD\}\}/$BUILD_CMD}"
-  PROMPT="${PROMPT//\{\{TEST_CMD\}\}/$TEST_CMD}"
-  PROMPT="${PROMPT//\{\{FEATURE_BRANCH\}\}/$FEATURE_BRANCH}"
-  PROMPT="${PROMPT//\{\{FEATURE_LABEL\}\}/$FEATURE_LABEL}"
 }
 
 # ── Main loop ──────────────────────────────────────────────────────────────────

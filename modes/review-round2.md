@@ -2,6 +2,16 @@
 
 You are verifying that round-1 review issues have been fixed on PR #{{PR_NUMBER}} in `{{REPO}}`.
 
+Read `ralph/project.md` for the build and test commands.
+
+## Step 0 — Sync workspace
+
+Before doing anything else:
+
+- Run `git fetch origin`
+- Run `git reset --hard origin/main`
+  (The worktree runs in detached HEAD mode — do not run `git checkout main`.)
+
 ## Step 1 — Find the original issues
 
 Use `gh pr view {{PR_NUMBER}} --repo {{REPO}} --comments` or GitHub MCP tools to read the PR comment timeline. Find the `<!-- RALPH-REVIEW: REQUEST_CHANGES -->` comment and note every issue it listed.
@@ -14,7 +24,7 @@ Launch a **general-purpose sub-agent** with this prompt:
 
 > "You are verifying fixes on PR #{{PR_NUMBER}} in `{{REPO}}`.
 > Get the diff with: `gh pr diff {{PR_NUMBER}} --repo {{REPO}}`
-> Run the test suite: `{{TEST_CMD}}`
+> Run the test suite using the test command in `ralph/project.md`.
 > The previous review raised these specific issues:
 > <paste the full body of the round 1 REQUEST_CHANGES comment here>
 > Check only whether each of those issues has been resolved in the latest diff.

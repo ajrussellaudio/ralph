@@ -2,6 +2,16 @@
 
 You are implementing GitHub issue #{{ISSUE_NUMBER}} in the `{{REPO}}` repository.
 
+Read `ralph/project.md` for the build and test commands.
+
+## Step 0 — Sync workspace
+
+Before doing anything else:
+
+- Run `git fetch origin`
+- Run `git reset --hard origin/main`
+  (The worktree runs in detached HEAD mode — do not run `git checkout main`.)
+
 ## Step 1 — Get up to speed
 
 - Run `git log --oneline -10` to see recent commits.
@@ -15,7 +25,7 @@ You are implementing GitHub issue #{{ISSUE_NUMBER}} in the `{{REPO}}` repository
 
 ## Step 3 — Verify
 
-Run `{{BUILD_CMD}}` (skip if empty) and `{{TEST_CMD}}` using a sub-agent. **Both must pass before you continue.**
+Run the build and test commands from `ralph/project.md` using a sub-agent. **Both must pass before you continue.**
 
 If either check fails and you cannot fix it after a genuine effort, **do not open a PR**. Instead:
 
@@ -50,7 +60,7 @@ If the checks passed:
 
 **Commit** all changes (code + CHANGELOG) together using conventional commits (`feat:`, `fix:`, `chore:`, `refactor:`).
 
-**Open a GitHub PR** from `ralph/issue-{{ISSUE_NUMBER}}` targeting `{{FEATURE_BRANCH}}`. The PR body should:
+**Open a GitHub PR** from `ralph/issue-{{ISSUE_NUMBER}}` targeting `main`. The PR body should:
 - Reference the issue with `Closes #{{ISSUE_NUMBER}}`
 - Summarise what was implemented
 - Note any limitations or known rough edges

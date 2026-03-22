@@ -2,6 +2,16 @@
 
 PR #{{PR_NUMBER}} in `{{REPO}}` has been approved. Merge it.
 
+Read `ralph/project.md` for the build and test commands.
+
+## Step 0 — Sync workspace
+
+Before doing anything else:
+
+- Run `git fetch origin`
+- Run `git reset --hard origin/main`
+  (The worktree runs in detached HEAD mode — do not run `git checkout main`.)
+
 ## Step 1 — Verify CI
 
 Check that all CI checks have passed:
@@ -20,23 +30,23 @@ gh pr checks {{PR_NUMBER}} --repo {{REPO}} < /dev/null
 gh pr merge {{PR_NUMBER}} --repo {{REPO}} --merge < /dev/null
 ```
 
-## Step 3 — Update workspace to new `{{FEATURE_BRANCH}}`
+## Step 3 — Update workspace to new main
 
 ```bash
-git fetch origin && git reset --hard origin/{{FEATURE_BRANCH}}
+git fetch origin && git reset --hard origin/main
 ```
 
 ## Step 4 — Rebase downstream PRs
 
-Find all open `ralph/issue-*` PRs with a PR number greater than {{PR_NUMBER}} that target `{{FEATURE_BRANCH}}`. For each, in ascending order:
+Find all open `ralph/issue-*` PRs with a PR number greater than {{PR_NUMBER}}. For each, in ascending order:
 
 - Note the tip SHA of the just-merged branch (use the PR's merge info or `git log` to find the last commit of that branch).
-- Fetch and rebase the downstream branch onto new `{{FEATURE_BRANCH}}`:
+- Fetch and rebase the downstream branch onto new main:
   ```bash
   git fetch origin ralph/issue-<M>
-  git rebase --onto {{FEATURE_BRANCH}} <old-tip-sha> ralph/issue-<M>
+  git rebase --onto main <old-tip-sha> ralph/issue-<M>
   ```
-- If the rebase succeeds and `{{TEST_CMD}}` passes: `git push --force-with-lease origin ralph/issue-<M>`
+- If the rebase succeeds and the test command (from `ralph/project.md`) passes: `git push --force-with-lease origin ralph/issue-<M>`
 - **If there are conflicts:** attempt to resolve them — read the conflicting files, understand what both sides are doing, and apply the resolution that preserves both sets of changes. Run tests to verify. If tests pass, continue the rebase and push.
 - **If you cannot resolve a conflict confidently** (e.g. tests keep failing, or the conflict is in generated/binary files): run `git rebase --abort`, open a GitHub issue titled `⚠️ Downstream rebase conflict: ralph/issue-<M>` describing the conflicting files, and stop.
 
