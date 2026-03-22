@@ -20,21 +20,21 @@ gh pr checks {{PR_NUMBER}} --repo {{REPO}} < /dev/null
 gh pr merge {{PR_NUMBER}} --repo {{REPO}} --merge < /dev/null
 ```
 
-## Step 3 — Update workspace to new main
+## Step 3 — Update workspace to new `{{FEATURE_BRANCH}}`
 
 ```bash
-git fetch origin && git reset --hard origin/main
+git fetch origin && git reset --hard origin/{{FEATURE_BRANCH}}
 ```
 
 ## Step 4 — Rebase downstream PRs
 
-Find all open `ralph/issue-*` PRs with a PR number greater than {{PR_NUMBER}}. For each, in ascending order:
+Find all open `ralph/issue-*` PRs with a PR number greater than {{PR_NUMBER}} that target `{{FEATURE_BRANCH}}`. For each, in ascending order:
 
 - Note the tip SHA of the just-merged branch (use the PR's merge info or `git log` to find the last commit of that branch).
-- Fetch and rebase the downstream branch onto new main:
+- Fetch and rebase the downstream branch onto new `{{FEATURE_BRANCH}}`:
   ```bash
   git fetch origin ralph/issue-<M>
-  git rebase --onto main <old-tip-sha> ralph/issue-<M>
+  git rebase --onto {{FEATURE_BRANCH}} <old-tip-sha> ralph/issue-<M>
   ```
 - If the rebase succeeds and `{{TEST_CMD}}` passes: `git push --force-with-lease origin ralph/issue-<M>`
 - **If there are conflicts:** attempt to resolve them — read the conflicting files, understand what both sides are doing, and apply the resolution that preserves both sets of changes. Run tests to verify. If tests pass, continue the rebase and push.
