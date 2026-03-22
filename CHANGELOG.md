@@ -7,6 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `fix_count INTEGER DEFAULT 0` column on `tasks` table; existing DBs migrated via `ALTER TABLE` on startup (#24)
+- `force-approve` routing: when `status='needs_fix'` and `fix_count >= 2`, `determine_mode()` routes to `force-approve` instead of `fix` (#24)
+
+### Changed
+- `modes/force-approve.md` rewritten to mark task `done` in SQLite and do a local `git merge --no-ff` — all `gh pr` calls removed (#24)
+- `modes/fix.md` now increments `fix_count` alongside setting `status='needs_review_2'` (#24)
+- `modes/review-round2.md` unresolved path now sets `status='needs_fix'` (was `approved`) so the fix/force-approve cycle is triggered correctly (#24)
+
+### Added
 - `modes/seed.md`: new mode that parses `tasks.md` and populates the DB on first run (#22)
 - `tasks.example.md`: reference example showing the `tasks.md` format (#22)
 - `seed_if_empty()` in `ralph.sh`: checks if the tasks table is empty before the main loop; exits with a clear error (including the expected path) if `tasks.md` is missing, otherwise invokes the seed mode (#22)

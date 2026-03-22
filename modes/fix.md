@@ -33,7 +33,7 @@ git commit -m "fix: address review notes for task #{{TASK_ID}}"
 ## Step 5 — Update DB status
 
 ```bash
-sqlite3 {{DB_PATH}} "UPDATE tasks SET status='needs_review_2' WHERE id={{TASK_ID}};"
+sqlite3 {{DB_PATH}} "UPDATE tasks SET status='needs_review_2', fix_count=fix_count+1 WHERE id={{TASK_ID}};"
 ```
 
 ## Step 6 — Stop
