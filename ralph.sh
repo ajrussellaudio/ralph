@@ -174,9 +174,9 @@ determine_mode() {
     ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
       --json number,labels --limit 100 \
       --jq '
-        [.[] | select(.labels | map(.name) | (contains(["prd"]) or contains(["blocked"])) | not)]
+        [.[] | select(.labels | map(.name) | (any(. == "prd") or any(. == "blocked")) | not)]
         | (
-            (map(select(.labels | map(.name) | contains(["high priority"]))) | sort_by(.number) | first)
+            (map(select(.labels | map(.name) | any(. == "high priority"))) | sort_by(.number) | first)
             // (sort_by(.number) | first)
           )
         | .number // empty
