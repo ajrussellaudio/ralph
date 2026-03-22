@@ -11,6 +11,15 @@ TASK_BRANCH=$(sqlite3 {{DB_PATH}} "SELECT branch FROM tasks WHERE id={{TASK_ID}}
 echo "$TASK_BRANCH"
 ```
 
+If `TASK_BRANCH` is empty, abort:
+
+```bash
+if [[ -z "$TASK_BRANCH" ]]; then
+  echo "Error: no branch recorded for task {{TASK_ID}} — cannot merge."
+  exit 1
+fi
+```
+
 ## Step 2 — Merge
 
 Check out the feature branch, ensure it is up to date, then merge:
@@ -19,7 +28,11 @@ Check out the feature branch, ensure it is up to date, then merge:
 git checkout {{FEATURE_BRANCH}}
 git fetch origin {{FEATURE_BRANCH}}
 git reset --hard origin/{{FEATURE_BRANCH}}
-git merge --no-ff "$TASK_BRANCH"
+if ! git merge --no-ff "$TASK_BRANCH"; then
+  git merge --abort
+  echo "Error: merge conflict on task {{TASK_ID}} — resolve manually and re-run."
+  exit 1
+fi
 ```
 
 ## Step 3 — Delete the task branch
