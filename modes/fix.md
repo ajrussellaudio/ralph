@@ -2,6 +2,8 @@
 
 PR #{{PR_NUMBER}} in `{{REPO}}` has a `<!-- RALPH-REVIEW: REQUEST_CHANGES -->` comment that needs addressing.
 
+⚠️ **Never** use `gh pr comment --body "..."` — it hangs waiting for stdin. Always write the body to a temp file and use `--body-file <file> < /dev/null`.
+
 ## Step 1 — Read the review
 
 Use `gh pr view {{PR_NUMBER}} --repo {{REPO}} --comments` or GitHub MCP tools to read the REQUEST_CHANGES comment. Read **every** issue listed — you must address all of them in one pass, not just some.

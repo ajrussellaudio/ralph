@@ -2,6 +2,8 @@
 
 PR #{{PR_NUMBER}} in `{{REPO}}` has been approved. Merge it.
 
+⚠️ **Never** use `gh pr comment --body "..."` — it hangs waiting for stdin. Always write the body to a temp file and use `--body-file <file> < /dev/null`.
+
 ## Step 1 — Verify CI
 
 Check that all CI checks have passed:
@@ -10,9 +12,28 @@ Check that all CI checks have passed:
 gh pr checks {{PR_NUMBER}} --repo {{REPO}} < /dev/null
 ```
 
-- If any check is **failed**: post a `<!-- RALPH-REVIEW: REQUEST_CHANGES -->` comment listing the failing check names, then emit `<promise>STOP</promise>` as your final output.
+- If any check is **failed**: post a `<!-- RALPH-REVIEW: REQUEST_CHANGES -->` comment using the shell template below, then emit `<promise>STOP</promise>` as your final output.
 - If any check is **in progress**: emit `<promise>STOP</promise>` as your final output without posting a comment.
 - Only proceed to Step 2 if all checks have passed.
+
+**CI-failure comment template:**
+
+```bash
+cat > /tmp/ralph-review.md << 'EOF'
+<!-- RALPH-REVIEW: REQUEST_CHANGES -->
+
+The following CI checks failed and must pass before this PR can merge:
+
+- <failing-check-name>
+- <failing-check-name>
+
+Please fix the failures and re-request review.
+
+— Ralph 🤖
+EOF
+gh pr comment {{PR_NUMBER}} --repo {{REPO}} --body-file /tmp/ralph-review.md < /dev/null
+rm /tmp/ralph-review.md
+```
 
 ## Step 2 — Merge
 
