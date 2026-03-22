@@ -108,6 +108,25 @@ if [[ -z "$TEST_CMD" ]]; then
   exit 1
 fi
 
+# In PRD mode, validate that either prd/* issues exist or the feature branch already
+# exists on origin. If neither is true, the label is almost certainly a typo.
+if [[ -n "$FEATURE_LABEL" ]]; then
+  if PRD_ISSUE_COUNT=$(gh issue list --repo "$REPO" --state open \
+      --label "$FEATURE_LABEL" \
+      --json number --jq 'length' \
+      < /dev/null 2>/dev/null); then
+    if [[ "$PRD_ISSUE_COUNT" -eq 0 ]]; then
+      if ! git -C "$GIT_ROOT" ls-remote --exit-code --heads origin "$FEATURE_BRANCH" > /dev/null 2>&1; then
+        echo "Error: No open issues with label '${FEATURE_LABEL}' found, and branch 'origin/${FEATURE_BRANCH}' does not exist."
+        echo "Check that --label matches an existing PRD label, or create the feature branch first."
+        exit 1
+      fi
+    fi
+  else
+    echo "Warning: Could not reach GitHub API; skipping PRD preflight check."
+  fi
+fi
+
 # ── Worktree setup ─────────────────────────────────────────────────────────────
 
 # Remove the worktree on exit (clean finish, error, or Ctrl-C).
@@ -158,6 +177,7 @@ determine_mode() {
 
   echo "  🔍 Checking for open ralph PRs in ${REPO}…"
   OPEN_RALPH_PRS=$(gh pr list --repo "$REPO" --state open \
+    --base "$FEATURE_BRANCH" \
     --json number,headRefName \
     --jq '[.[] | select(.headRefName | startswith("ralph/issue-"))] | sort_by(.number)' \
     < /dev/null 2>/dev/null || echo "[]")
@@ -203,23 +223,35 @@ determine_mode() {
   else
     echo "  🔍 No open ralph PRs — checking issues…"
 
-    # Pick highest-priority open issue: high-priority label first, then lowest number
-    LABEL_FILTER=()
+    # Pick highest-priority open issue: high-priority label first, then lowest number.
+    # PRD mode: --label scopes to prd/<label>; exclude the PRD issue itself (prd) and blocked.
+    # Standalone mode: no label filter; additionally exclude any issue carrying a prd/* label.
     if [[ -n "$FEATURE_LABEL" ]]; then
-      LABEL_FILTER=(--label "$FEATURE_LABEL")
+      ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
+        --label "$FEATURE_LABEL" \
+        --json number,labels --limit 100 \
+        --jq '
+          [.[] | select(.labels | map(.name) | (any(. == "prd") or any(. == "blocked")) | not)]
+          | (
+              (map(select(.labels | map(.name) | any(. == "high priority"))) | sort_by(.number) | first)
+              // (sort_by(.number) | first)
+            )
+          | .number // empty
+        ' \
+        < /dev/null 2>/dev/null || echo "")
+    else
+      ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
+        --json number,labels --limit 100 \
+        --jq '
+          [.[] | select(.labels | map(.name) | (any(. == "prd") or any(startswith("prd/")) or any(. == "blocked")) | not)]
+          | (
+              (map(select(.labels | map(.name) | any(. == "high priority"))) | sort_by(.number) | first)
+              // (sort_by(.number) | first)
+            )
+          | .number // empty
+        ' \
+        < /dev/null 2>/dev/null || echo "")
     fi
-    ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
-      "${LABEL_FILTER[@]}" \
-      --json number,labels --limit 100 \
-      --jq '
-        [.[] | select(.labels | map(.name) | (any(. == "prd") or any(. == "blocked")) | not)]
-        | (
-            (map(select(.labels | map(.name) | any(. == "high priority"))) | sort_by(.number) | first)
-            // (sort_by(.number) | first)
-          )
-        | .number // empty
-      ' \
-      < /dev/null 2>/dev/null || echo "")
 
     if [[ -n "$ISSUE_NUMBER" ]]; then
       MODE="implement"
