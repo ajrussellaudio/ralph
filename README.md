@@ -43,6 +43,20 @@ Each iteration Ralph:
    echo 'ralph.toml' >> .gitignore
    ```
 
+### Fork-based workflow (work projects)
+
+If you work on a project you don't own (e.g. you can't merge your own PRs), use a fork:
+
+1. Fork the upstream repo on GitHub and clone your fork locally.
+2. Point `repo` at your fork and set `upstream` to the original:
+   ```toml
+   repo     = "you/project"          # your fork — Ralph owns this
+   upstream = "org/project"          # upstream — final PR lands here
+   test     = "npm test"
+   ```
+
+Ralph will keep all issues, branches, and intermediate PRs on your fork. When all task issues are closed, it opens a single `you:feat/<label> → org/project:main` PR for the upstream maintainers to review and merge.
+
 3. **Run from your project root:**
    ```bash
    ralph 20

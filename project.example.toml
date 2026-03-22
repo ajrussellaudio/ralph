@@ -2,7 +2,15 @@
 # Copy this file to ralph.toml at your project root and fill in the values.
 
 # GitHub repo slug (owner/repo). Optional — Ralph infers it from `gh repo view`.
+# For fork-based workflows, set this to your fork (e.g. "you/project").
 repo = ""
+
+# Upstream repo slug (owner/repo). Only needed for fork-based workflows where
+# you want Ralph to open the final feature PR against an upstream repo you don't
+# own (e.g. "org/project"). When set, Ralph keeps all issues and intermediate
+# PRs on your fork, then opens the final feat→main PR against this upstream.
+# Leave empty for personal projects (Ralph defaults to `repo`).
+upstream = ""
 
 # Build command — leave empty if no build step.
 build = ""

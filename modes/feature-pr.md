@@ -1,15 +1,15 @@
 # Ralph — Feature PR Mode
 
-All task issues under `{{FEATURE_LABEL}}` are closed and all task PRs have been merged into `{{FEATURE_BRANCH}}`. Your job is to open a pull request from `{{FEATURE_BRANCH}}` to `main` for human review.
+All task issues under `{{FEATURE_LABEL}}` are closed and all task PRs have been merged into `{{FEATURE_BRANCH}}`. Your job is to open a pull request from `{{FORK_OWNER}}:{{FEATURE_BRANCH}}` to `{{UPSTREAM_REPO}}` (main) for human review.
 
 ⚠️ **Never** use `gh pr comment --body "..."` — it hangs waiting for stdin. Always write the body to a temp file and use `--body-file <file> < /dev/null`.
 
 ## Step 1 — Verify no existing PR
 
-Check whether a `{{FEATURE_BRANCH}} → main` PR already exists:
+Check whether a `{{FEATURE_BRANCH}} → main` PR already exists on the upstream:
 
 ```bash
-gh pr list --repo {{REPO}} --state open --base main --head {{FEATURE_BRANCH}} --json number --jq '.[].number' < /dev/null
+gh pr list --repo {{UPSTREAM_REPO}} --state open --base main --head {{FORK_OWNER}}:{{FEATURE_BRANCH}} --json number --jq '.[].number' < /dev/null
 ```
 
 If one already exists, emit `<promise>STOP</promise>` immediately and do nothing else.
@@ -33,17 +33,17 @@ gh issue list --repo {{REPO}} --state closed --label "{{FEATURE_LABEL}}" --json 
 
 Compose a PR description that:
 - Opens with a one-paragraph summary of what the feature does
-- References the parent PRD issue with `Closes #<prd-issue-number>`
-- Lists every task issue closed as part of this feature (e.g. `- #12 Short title`)
+- References the parent PRD issue with `Closes {{REPO}}#<prd-issue-number>` (cross-repo close syntax, since the issue lives on the fork)
+- Lists every task issue closed as part of this feature (e.g. `- {{REPO}}#12 Short title`)
 - Notes any known limitations or rough edges
 
 Then open the PR:
 
 ```bash
 gh pr create \
-  --repo {{REPO}} \
+  --repo {{UPSTREAM_REPO}} \
   --base main \
-  --head {{FEATURE_BRANCH}} \
+  --head {{FORK_OWNER}}:{{FEATURE_BRANCH}} \
   --title "feat(<label>): <short summary>" \
   --body "<PR description>" \
   < /dev/null

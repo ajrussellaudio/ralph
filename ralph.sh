@@ -53,11 +53,20 @@ toml_get() {
 BUILD_CMD=$(toml_get build)
 TEST_CMD=$(toml_get test)
 REPO=$(toml_get repo)
+UPSTREAM_REPO=$(toml_get upstream)
 
 # Fall back to inferring the repo from the GitHub CLI.
 if [[ -z "$REPO" ]]; then
   REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || echo "")
 fi
+
+# Upstream defaults to REPO for personal projects (same-repo workflow).
+if [[ -z "$UPSTREAM_REPO" ]]; then
+  UPSTREAM_REPO="$REPO"
+fi
+
+# Fork owner is the user/org prefix of REPO (e.g. "you" from "you/project").
+FORK_OWNER="${REPO%%/*}"
 
 # ── Argument validation ────────────────────────────────────────────────────────
 
@@ -311,6 +320,8 @@ build_prompt() {
   PROMPT="${PROMPT//\{\{TEST_CMD\}\}/$TEST_CMD}"
   PROMPT="${PROMPT//\{\{FEATURE_BRANCH\}\}/$FEATURE_BRANCH}"
   PROMPT="${PROMPT//\{\{FEATURE_LABEL\}\}/$FEATURE_LABEL}"
+  PROMPT="${PROMPT//\{\{UPSTREAM_REPO\}\}/$UPSTREAM_REPO}"
+  PROMPT="${PROMPT//\{\{FORK_OWNER\}\}/$FORK_OWNER}"
 }
 
 # ── Main loop ──────────────────────────────────────────────────────────────────
