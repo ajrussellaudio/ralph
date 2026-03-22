@@ -170,7 +170,7 @@ init_storage() {
   mkdir -p "$STORAGE_DIR"
   sqlite3 "$DB_PATH" <<'SQL'
 CREATE TABLE IF NOT EXISTS prd (
-  label    TEXT,
+  label    TEXT PRIMARY KEY,
   overview TEXT
 );
 CREATE TABLE IF NOT EXISTS tasks (
@@ -350,7 +350,7 @@ build_prompt() {
   # Derive PRD overview from the DB (empty string if not set).
   local prd_overview
   prd_overview=$(sqlite3 "$DB_PATH" \
-    "SELECT overview FROM prd WHERE label = '${LABEL_SLUG}' LIMIT 1;" 2>/dev/null || echo "")
+    "SELECT overview FROM prd WHERE label = ?;" "$LABEL_SLUG" 2>/dev/null || echo "")
 
   PROMPT=$(cat "$mode_file")
   PROMPT="${PROMPT//\{\{REPO\}\}/$REPO}"
