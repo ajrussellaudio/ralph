@@ -402,7 +402,14 @@ seed_if_empty() {
     --prompt "$PROMPT" \
     --allow-all \
     --autopilot \
-    2>&1 | tee /dev/stderr) || true
+    2>&1 | tee /dev/stderr)
+
+  local seeded_count
+  seeded_count=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM tasks;" 2>/dev/null || echo "0")
+  if [[ "$seeded_count" -eq 0 ]]; then
+    echo "Error: Seeding ran but no tasks were inserted. Check tasks.md format." >&2
+    exit 1
+  fi
 }
 
 seed_if_empty
