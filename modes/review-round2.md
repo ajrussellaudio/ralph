@@ -4,14 +4,6 @@ You are verifying that round-1 review issues have been fixed on PR #{{PR_NUMBER}
 
 Read `ralph/project.md` for the build and test commands.
 
-## Step 0 — Sync workspace
-
-Before doing anything else:
-
-- Run `git fetch origin`
-- Run `git reset --hard origin/main`
-  (The worktree runs in detached HEAD mode — do not run `git checkout main`.)
-
 ## Step 1 — Find the original issues
 
 Use `gh pr view {{PR_NUMBER}} --repo {{REPO}} --comments` or GitHub MCP tools to read the PR comment timeline. Find the `<!-- RALPH-REVIEW: REQUEST_CHANGES -->` comment and note every issue it listed.

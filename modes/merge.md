@@ -4,14 +4,6 @@ PR #{{PR_NUMBER}} in `{{REPO}}` has been approved. Merge it.
 
 Read `ralph/project.md` for the build and test commands.
 
-## Step 0 — Sync workspace
-
-Before doing anything else:
-
-- Run `git fetch origin`
-- Run `git reset --hard origin/main`
-  (The worktree runs in detached HEAD mode — do not run `git checkout main`.)
-
 ## Step 1 — Verify CI
 
 Check that all CI checks have passed:
