@@ -363,8 +363,49 @@ build_prompt() {
   PROMPT="${PROMPT//\{\{FEATURE_LABEL\}\}/$FEATURE_LABEL}"
   PROMPT="${PROMPT//\{\{DB_PATH\}\}/$DB_PATH}"
   PROMPT="${PROMPT//\{\{TASKS_FILE\}\}/$TASKS_FILE}"
+  PROMPT="${PROMPT//\{\{LABEL_SLUG\}\}/$LABEL_SLUG}"
   PROMPT="${PROMPT//\{\{PRD_OVERVIEW\}\}/$prd_overview}"
 }
+
+# ── Seeding ───────────────────────────────────────────────────────────────────
+
+# Checks whether the tasks table is empty. If so:
+#   - Exits with a clear error if tasks.md does not exist.
+#   - Otherwise invokes the seed mode (Copilot) to parse tasks.md and populate the DB.
+seed_if_empty() {
+  local task_count
+  task_count=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM tasks;" 2>/dev/null || echo "0")
+
+  if [[ "$task_count" -gt 0 ]]; then
+    return 0
+  fi
+
+  if [[ ! -f "$TASKS_FILE" ]]; then
+    echo ""
+    echo "Error: DB is empty and tasks.md was not found at:"
+    echo "  $TASKS_FILE"
+    echo ""
+    echo "Create a tasks.md file at that path to seed the DB on first run."
+    echo "See tasks.example.md in the Ralph repo for the expected format."
+    exit 1
+  fi
+
+  echo ""
+  echo "  📋 DB is empty — seeding from ${TASKS_FILE} …"
+
+  MODE="seed"
+  PR_NUMBER=""
+  ISSUE_NUMBER=""
+  build_prompt
+
+  (cd "$WORKTREE_DIR" && copilot \
+    --prompt "$PROMPT" \
+    --allow-all \
+    --autopilot \
+    2>&1 | tee /dev/stderr) || true
+}
+
+seed_if_empty
 
 # ── Main loop ──────────────────────────────────────────────────────────────────
 

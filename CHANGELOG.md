@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `modes/seed.md`: new mode that parses `tasks.md` and populates the DB on first run (#22)
+- `tasks.example.md`: reference example showing the `tasks.md` format (#22)
+- `seed_if_empty()` in `ralph.sh`: checks if the tasks table is empty before the main loop; exits with a clear error (including the expected path) if `tasks.md` is missing, otherwise invokes the seed mode (#22)
+- `{{LABEL_SLUG}}` placeholder substitution in `build_prompt()` (#22)
 - `modes/feature-pr.md`: new mode that opens a `feat/<label> → main` PR when all task issues are closed and all task PRs are merged; includes explicit instruction never to review, approve, or merge the PR (#9)
 - `determine_mode()` in PRD mode: after no open task issues, checks for an existing `feat/<label> → main` PR — sets `MODE=feature-pr` if none exists, `MODE=complete` if one is already open (#9)
 - `--label=<label>` flag to `ralph.sh`; derives `FEATURE_BRANCH=feat/<label>` and `FEATURE_LABEL=prd/<label>` (#6)
