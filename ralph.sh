@@ -108,6 +108,11 @@ if ! command -v copilot &>/dev/null; then
   exit 1
 fi
 
+if ! command -v sqlite3 &>/dev/null; then
+  echo "Error: 'sqlite3' not found in PATH. Install SQLite first."
+  exit 1
+fi
+
 if [[ ! -d "$MODES_DIR" ]]; then
   echo "Error: Modes directory not found at $MODES_DIR"
   exit 1
@@ -143,6 +148,45 @@ if [[ -n "$FEATURE_LABEL" ]]; then
     echo "Warning: Could not reach GitHub API; skipping PRD preflight check."
   fi
 fi
+
+# ── Storage paths ─────────────────────────────────────────────────────────────
+
+# Derive slug: replace '/' with '-' in REPO (e.g. "owner/repo" → "owner-repo")
+REPO_SLUG="${REPO//\//-}"
+
+# Label slug: strip "prd/" prefix if present; default to "default" when no label given.
+if [[ -n "$FEATURE_LABEL" ]]; then
+  LABEL_SLUG="${FEATURE_LABEL#prd/}"
+else
+  LABEL_SLUG="default"
+fi
+
+STORAGE_DIR="${HOME}/.ralph/projects/${REPO_SLUG}/${LABEL_SLUG}"
+DB_PATH="${STORAGE_DIR}/ralph.db"
+TASKS_FILE="${STORAGE_DIR}/tasks.md"
+
+# Ensure the storage directory exists and the DB schema is initialised.
+init_storage() {
+  mkdir -p "$STORAGE_DIR"
+  sqlite3 "$DB_PATH" <<'SQL'
+CREATE TABLE IF NOT EXISTS prd (
+  label    TEXT PRIMARY KEY,
+  overview TEXT
+);
+CREATE TABLE IF NOT EXISTS tasks (
+  id           INTEGER PRIMARY KEY,
+  title        TEXT,
+  body         TEXT,
+  priority     TEXT    DEFAULT 'normal',
+  status       TEXT    DEFAULT 'pending',
+  branch       TEXT,
+  review_notes TEXT,
+  blocked_by   INTEGER REFERENCES tasks(id)
+);
+SQL
+}
+
+init_storage
 
 # ── Worktree setup ─────────────────────────────────────────────────────────────
 
@@ -295,7 +339,7 @@ determine_mode() {
   fi
 }
 
-# Loads the mode file and substitutes {{REPO}}, {{PR_NUMBER}}, {{ISSUE_NUMBER}}.
+# Loads the mode file and substitutes all {{PLACEHOLDER}} values.
 build_prompt() {
   local mode_file="$MODES_DIR/$MODE.md"
   if [[ ! -f "$mode_file" ]]; then
@@ -303,14 +347,23 @@ build_prompt() {
     exit 1
   fi
 
+  # Derive PRD overview from the DB (empty string if not set).
+  local prd_overview
+  prd_overview=$(sqlite3 "$DB_PATH" \
+    "SELECT overview FROM prd WHERE label = ?;" "$LABEL_SLUG" 2>/dev/null || echo "")
+
   PROMPT=$(cat "$mode_file")
   PROMPT="${PROMPT//\{\{REPO\}\}/$REPO}"
   PROMPT="${PROMPT//\{\{PR_NUMBER\}\}/$PR_NUMBER}"
   PROMPT="${PROMPT//\{\{ISSUE_NUMBER\}\}/$ISSUE_NUMBER}"
+  PROMPT="${PROMPT//\{\{TASK_ID\}\}/$ISSUE_NUMBER}"
   PROMPT="${PROMPT//\{\{BUILD_CMD\}\}/$BUILD_CMD}"
   PROMPT="${PROMPT//\{\{TEST_CMD\}\}/$TEST_CMD}"
   PROMPT="${PROMPT//\{\{FEATURE_BRANCH\}\}/$FEATURE_BRANCH}"
   PROMPT="${PROMPT//\{\{FEATURE_LABEL\}\}/$FEATURE_LABEL}"
+  PROMPT="${PROMPT//\{\{DB_PATH\}\}/$DB_PATH}"
+  PROMPT="${PROMPT//\{\{TASKS_FILE\}\}/$TASKS_FILE}"
+  PROMPT="${PROMPT//\{\{PRD_OVERVIEW\}\}/$prd_overview}"
 }
 
 # ── Main loop ──────────────────────────────────────────────────────────────────

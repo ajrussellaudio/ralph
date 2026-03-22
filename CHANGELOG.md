@@ -13,6 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Auto-creates `feat/<label>` on `origin` from `origin/main` if it does not yet exist (#6)
 - `{{FEATURE_BRANCH}}` placeholder substitution in `build_prompt()`; resolves to `main` when no `--label` is given (#6)
 - Preflight validation in PRD mode: exits non-zero with a clear diagnostic if no `prd/<label>` issues exist and `feat/<label>` branch does not exist on origin (#7)
+- `sqlite3` preflight check: `ralph` exits with a clear error if `sqlite3` is not found in PATH (#21)
+- Storage path derivation: `~/.ralph/projects/<repo-slug>/<label-slug>/` created automatically on startup; defaults to `default` when no `--label` is given (#21)
+- `ralph.db` initialised on startup with `prd` and `tasks` tables if the DB does not already exist (#21)
+- `{{DB_PATH}}`, `{{TASKS_FILE}}`, `{{TASK_ID}}`, and `{{PRD_OVERVIEW}}` placeholder substitutions in `build_prompt()`; `{{TASK_ID}}` mirrors `{{ISSUE_NUMBER}}` (#21)
 
 ### Changed
 - Worktree and `determine_mode()` sync now use `origin/$FEATURE_BRANCH` instead of always `origin/main` (#6)
