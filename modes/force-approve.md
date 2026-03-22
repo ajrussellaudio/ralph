@@ -2,6 +2,8 @@
 
 PR #{{PR_NUMBER}} in `{{REPO}}` has already had two rounds of review and fixes. Approve it unconditionally.
 
+⚠️ **Never** use `gh pr comment --body "..."` — it hangs waiting for stdin. Always write the body to a temp file and use `--body-file <file> < /dev/null`.
+
 ## Step 1 — Approve
 
 Post this comment:
