@@ -40,7 +40,23 @@ Find all open `ralph/issue-*` PRs with a PR number greater than {{PR_NUMBER}} th
 - **If there are conflicts:** attempt to resolve them — read the conflicting files, understand what both sides are doing, and apply the resolution that preserves both sets of changes. Run tests to verify. If tests pass, continue the rebase and push.
 - **If you cannot resolve a conflict confidently** (e.g. tests keep failing, or the conflict is in generated/binary files): run `git rebase --abort`, open a GitHub issue titled `⚠️ Downstream rebase conflict: ralph/issue-<M>` describing the conflicting files, and stop.
 
-## Step 5 — Unblock issues
+## Step 5 — Close the implemented issue
+
+GitHub only auto-closes issues referenced with `Closes #N` when a PR merges into the **default branch**. When merging into a feature branch, the issue must be closed explicitly.
+
+Look up the issue(s) closed by this PR:
+
+```bash
+gh pr view {{PR_NUMBER}} --repo {{REPO}} --json closingIssuesReferences --jq '.closingIssuesReferences[].number' < /dev/null
+```
+
+Close each one:
+
+```bash
+gh issue close <N> --repo {{REPO}} < /dev/null
+```
+
+## Step 6 — Unblock issues
 
 Fetch all open issues that carry the `blocked` label:
 
@@ -66,7 +82,7 @@ For each blocked issue, check whether its body contains `Blocked by #<X>` (case-
   gh issue edit <N> --repo {{REPO}} --remove-label "blocked" < /dev/null
   ```
 
-## Step 6 — Stop
+## Step 7 — Stop
 
 Emit this token as your **final output** and end your response immediately:
 
