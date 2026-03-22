@@ -50,7 +50,7 @@ If the checks passed:
 
 **Commit** all changes (code + CHANGELOG) together using conventional commits (`feat:`, `fix:`, `chore:`, `refactor:`).
 
-**Open a GitHub PR** from `ralph/issue-{{ISSUE_NUMBER}}` targeting `main`. The PR body should:
+**Open a GitHub PR** from `ralph/issue-{{ISSUE_NUMBER}}` targeting `{{FEATURE_BRANCH}}`. The PR body should:
 - Reference the issue with `Closes #{{ISSUE_NUMBER}}`
 - Summarise what was implemented
 - Note any limitations or known rough edges
