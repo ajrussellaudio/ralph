@@ -13,25 +13,48 @@ Each iteration Ralph:
 
 ## Setup
 
-1. **Add Ralph to your repo:**
+1. **Install Ralph once** (clone it somewhere permanent and symlink the script):
    ```bash
-   git clone https://github.com/ajrussellaudio/ralph.git ralph
-   echo 'ralph/project.toml' >> .gitignore   # keep project config local, or commit it
+   git clone https://github.com/ajrussellaudio/ralph.git ~/.ralph
+   ~/.ralph/install.sh
+   ```
+   This symlinks `ralph` into `~/.local/bin/`. Make sure that's on your `PATH`:
+   ```bash
+   export PATH="$HOME/.local/bin:$PATH"  # add to ~/.zshrc or ~/.bashrc
    ```
 
-2. **Configure for your project** — copy and fill in the template:
+2. **Configure each project** — create a `ralph.toml` in your project root:
    ```bash
-   cp ralph/project.example.toml ralph/project.toml
-   # Edit ralph/project.toml with your repo name and build/test commands
+   cp ~/.ralph/project.example.toml ralph.toml
+   ```
+   Edit `ralph.toml`:
+   ```toml
+   # Optional — Ralph infers this from `gh repo view` if omitted
+   repo = "your-org/your-repo"
+
+   # Leave empty if there is no build step
+   build = "npm run build"
+
+   # Required
+   test = "npm test"
+   ```
+   Add `ralph.toml` to `.gitignore` to keep it local:
+   ```bash
+   echo 'ralph.toml' >> .gitignore
    ```
 
-3. **Run:**
+3. **Run from your project root:**
    ```bash
-   ./ralph/ralph.sh 20
+   ralph 20
    # or, to work within a feature branch:
-   ./ralph/ralph.sh 20 --label=foo-widget
+   ralph 20 --label=foo-widget
    ```
    Replace `20` with however many iterations you want to allow.
+
+4. **Update Ralph at any time:**
+   ```bash
+   git -C ~/.ralph pull
+   ```
 
 ## Requirements
 
@@ -44,9 +67,24 @@ Each iteration Ralph:
 | File | Purpose |
 |------|---------|
 | `ralph.sh` | The loop script — generic, no project-specific code |
+| `install.sh` | Symlinks `ralph.sh` into `~/.local/bin/` for global access |
 | `modes/` | Per-mode agent prompts (`implement.md`, `review.md`, `fix.md`, `merge.md`, etc.) |
-| `project.example.toml` | Annotated template — copy to `project.toml` and fill in |
-| `project.toml` | Your project config — created from the template, not committed here |
+| `project.example.toml` | Annotated template — copy to `ralph.toml` in your project root and fill in |
+
+## Customising modes
+
+To override Ralph's prompts for a specific project, create a `ralph/modes/` directory in your project root and add mode files there. Ralph checks for this directory first before falling back to the bundled modes in `~/.ralph/modes/`.
+
+## Label conventions
+
+| Label | Purpose |
+|---|---|
+| `prd` | Marks an issue as a PRD — Ralph never implements it |
+| `prd/<slug>` | Scopes an issue to a feature; Ralph targets `feat/<slug>` |
+| `high-priority` | Ralph picks these issues first |
+| `blocked` | Ralph skips these issues |
+
+Use `/write-a-prd` and `/prd-to-issues` Copilot skills to create PRDs and task issues with the correct labels applied automatically.
 
 ## Stopping Ralph
 

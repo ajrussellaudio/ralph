@@ -1,6 +1,11 @@
 # Ralph project configuration
-# Copy this file to ralph/project.toml and fill in the values.
+# Copy this file to ralph.toml at your project root and fill in the values.
 
+# GitHub repo slug (owner/repo). Optional — Ralph infers it from `gh repo view`.
 repo = ""
+
+# Build command — leave empty if no build step.
 build = ""
+
+# Test command — required.
 test = ""

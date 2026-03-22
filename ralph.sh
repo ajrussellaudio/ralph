@@ -23,20 +23,41 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GIT_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
-MODES_DIR="$SCRIPT_DIR/modes"
+GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 WORKTREE_DIR="${GIT_ROOT%/*}/$(basename "$GIT_ROOT")-ralph-workspace"
 
-# Parse a value from project.toml by key name.
+# Modes: local project override (ralph/modes/) takes precedence over bundled modes.
+if [[ -d "$GIT_ROOT/ralph/modes" ]]; then
+  MODES_DIR="$GIT_ROOT/ralph/modes"
+else
+  MODES_DIR="$SCRIPT_DIR/modes"
+fi
+
+# Config: check ralph.toml at project root, then ralph/project.toml (legacy).
+if [[ -f "$GIT_ROOT/ralph.toml" ]]; then
+  CONFIG_FILE="$GIT_ROOT/ralph.toml"
+elif [[ -f "$GIT_ROOT/ralph/project.toml" ]]; then
+  CONFIG_FILE="$GIT_ROOT/ralph/project.toml"
+else
+  CONFIG_FILE=""
+fi
+
+# Parse a value from the config file by key name.
 # Handles quoted strings (repo = "owner/repo") and unquoted values (build = "").
 toml_get() {
-  grep -E "^$1 *=" "$SCRIPT_DIR/project.toml" \
+  [[ -n "$CONFIG_FILE" ]] || return 0
+  grep -E "^$1 *=" "$CONFIG_FILE" \
     | sed -E 's/^[^=]+= *"?([^"]*)"? *$/\1/'
 }
 
-REPO=$(toml_get repo)
 BUILD_CMD=$(toml_get build)
 TEST_CMD=$(toml_get test)
+REPO=$(toml_get repo)
+
+# Fall back to inferring the repo from the GitHub CLI.
+if [[ -z "$REPO" ]]; then
+  REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || echo "")
+fi
 
 # ── Argument validation ────────────────────────────────────────────────────────
 
@@ -92,19 +113,15 @@ if [[ ! -d "$MODES_DIR" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$SCRIPT_DIR/project.toml" ]]; then
-  echo "Error: project.toml not found at $SCRIPT_DIR/project.toml"
-  echo "Copy project.example.toml to project.toml and fill in your values."
-  exit 1
-fi
-
 if [[ -z "$REPO" ]]; then
-  echo "Error: Could not read 'repo' from $SCRIPT_DIR/project.toml"
+  echo "Error: Could not determine the GitHub repo. Add 'repo = \"owner/repo\"' to"
+  echo "ralph.toml in your project root, or run from inside a GitHub repository."
   exit 1
 fi
 
 if [[ -z "$TEST_CMD" ]]; then
-  echo "Error: Could not read 'test' from $SCRIPT_DIR/project.toml"
+  echo "Error: No test command configured. Add 'test = \"your-test-cmd\"' to"
+  echo "ralph.toml in your project root (create it from ~/.ralph/project.example.toml)."
   exit 1
 fi
 
