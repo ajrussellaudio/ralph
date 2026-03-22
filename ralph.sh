@@ -262,14 +262,14 @@ determine_mode() {
         --base "main" \
         --head "$FEATURE_BRANCH" \
         --json number --jq 'length' \
-        < /dev/null 2>/dev/null || echo "0")
+        < /dev/null 2>/dev/null)
 
-      if [[ "$FEATURE_PR_COUNT" -eq 0 ]]; then
+      if [[ "$FEATURE_PR_COUNT" == "0" ]]; then
         MODE="feature-pr"
         echo "  ▶  Mode: $MODE  (all task issues closed, opening feat→main PR)"
       else
         MODE="complete"
-        echo "  ▶  Mode: $MODE  (feat→main PR already open)"
+        echo "  ▶  Mode: $MODE  (feat→main PR already open or check failed)"
       fi
     else
       MODE="complete"
