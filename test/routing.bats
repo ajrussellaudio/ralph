@@ -52,6 +52,13 @@ teardown() {
   [ "$TASK_ID" = "01" ]
 }
 
+@test "needs_fix task with fix_count=1 → fix (below force-approve threshold)" {
+  create_task_file "$PLANS_DIR" "01-task.md" "status=needs_fix" "fix_count=1"
+  determine_mode
+  [ "$MODE"    = "fix" ]
+  [ "$TASK_ID" = "01" ]
+}
+
 @test "needs_fix task with fix_count=2 → force-approve" {
   create_task_file "$PLANS_DIR" "01-task.md" "status=needs_fix" "fix_count=2"
   determine_mode
@@ -61,6 +68,13 @@ teardown() {
 
 @test "needs_review_2 task with fix_count=0 → review-round2" {
   create_task_file "$PLANS_DIR" "01-task.md" "status=needs_review_2" "fix_count=0"
+  determine_mode
+  [ "$MODE"    = "review-round2" ]
+  [ "$TASK_ID" = "01" ]
+}
+
+@test "needs_review_2 task with fix_count=1 → review-round2 (below force-approve threshold)" {
+  create_task_file "$PLANS_DIR" "01-task.md" "status=needs_review_2" "fix_count=1"
   determine_mode
   [ "$MODE"    = "review-round2" ]
   [ "$TASK_ID" = "01" ]
@@ -93,6 +107,7 @@ teardown() {
   export PATH="$mock_bin:$PATH"
 
   determine_mode
+  rm -rf "$mock_bin"
   [ "$MODE" = "feature-pr" ]
 }
 
@@ -107,6 +122,7 @@ teardown() {
   export PATH="$mock_bin:$PATH"
 
   determine_mode
+  rm -rf "$mock_bin"
   [ "$MODE" = "complete" ]
 }
 

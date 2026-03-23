@@ -5,7 +5,8 @@
 load 'test_helper'
 
 setup() {
-  TEST_FILE="$(mktemp).md"
+  TEST_DIR="$(mktemp -d)"
+  TEST_FILE="$TEST_DIR/test.md"
   cat > "$TEST_FILE" <<'EOF'
 ---
 status: needs_review
@@ -23,7 +24,7 @@ EOF
 }
 
 teardown() {
-  rm -f "$TEST_FILE"
+  rm -rf "$TEST_DIR"
 }
 
 # ── YAML read: get_front_matter_field ────────────────────────────────────────
