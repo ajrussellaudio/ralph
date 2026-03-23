@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `plans/example-feature.md`: example PRD overview file demonstrating the `plans/` directory structure (#41)
+- `plans/example-feature/01-example-task.md`: example task file documenting every YAML front matter field (`status`, `priority`, `blocked_by`, `branch`, `fix_count`, `review_notes`) with inline comments explaining each field and its allowed values (#41)
+
+### Changed
+- README: replaced GitHub Issues workflow description with a "Markdown backend" section covering `plans/` directory layout, task file format, all YAML front matter fields, status values, `--label` usage, and full lifecycle (#41)
+- README: removed references to `~/.ralph/` installation path and old GitHub Issues-based workflow (#41)
+
+### Added
 - `blocked_by` dependency enforcement in `determine_mode()`: pending tasks whose `blocked_by` list contains any task ID not yet `status: done` are skipped; if all remaining pending tasks are blocked, routing exits with a `🚫 blocked` message and exit code 1 rather than looping (#40)
 - Step 5 in `merge.md`: after marking a task `done`, scans all other task files for any pending tasks that listed the completed task in their `blocked_by` field and logs which tasks are now unblocked (#40)
 
