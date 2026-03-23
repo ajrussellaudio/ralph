@@ -112,6 +112,11 @@ if ! command -v copilot &>/dev/null; then
   exit 1
 fi
 
+if ! command -v python3 &>/dev/null; then
+  echo "Error: python3 is required but not found in PATH."
+  exit 1
+fi
+
 if [[ ! -d "$MODES_DIR" ]]; then
   echo "Error: Modes directory not found at $MODES_DIR"
   exit 1
@@ -222,6 +227,9 @@ new_fm = re.sub(
     fm,
     flags=re.MULTILINE
 )
+if new_fm == fm:
+    sys.stderr.write(f"Warning: field '{field}' not found in front matter\n")
+    sys.exit(1)
 new_content = '---\n' + new_fm + '\n---' + content[m.end():]
 with open(file_path, 'w') as f:
     f.write(new_content)
@@ -247,7 +255,7 @@ determine_mode() {
   echo "  🔍 Scanning task files in ${PLANS_DIR}…"
 
   local routing
-  routing=$(python3 - "$PLANS_DIR" <<'PYEOF'
+  if ! routing=$(python3 - "$PLANS_DIR" <<'PYEOF'
 import sys, os, re, glob
 
 plans_dir = sys.argv[1]
@@ -333,7 +341,10 @@ if all(t['status'] == 'done' for t in tasks):
 # Otherwise (all remaining tasks are blocked)
 print('complete\t\t')
 PYEOF
-)
+); then
+    echo "Error: routing script failed — check task files in ${PLANS_DIR}"
+    exit 1
+  fi
 
   local mode task_file task_id
   IFS=$'\t' read -r mode task_file task_id <<< "$routing"
