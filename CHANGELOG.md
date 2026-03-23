@@ -7,6 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `test/routing.bats`: bats test suite covering all `determine_mode()` routing cases — pending→implement, needs_review→review, needs_fix (fix_count=0)→fix, needs_fix (fix_count≥2)→force-approve, needs_review_2→review-round2, all-done→feature-pr/complete, blocked-pending→complete, high-priority selection (#27)
+- `test/seeding.bats`: bats test suite for `tasks.md` parsing — row count, title/priority/status fields, `blocked_by` mapping, NULL blocked_by, idempotency, and missing-file error (#27)
+- `test/test_helper.bash`: shared bats helpers for creating test DBs and inserting task rows (#27)
+- `lib/routing.sh`: `determine_mode()` extracted from `ralph.sh` into its own file; supports `RALPH_SKIP_SYNC=1` env var to skip git workspace sync during tests (#27)
+- `lib/seed.py`: seeding Python script extracted from `modes/seed.md` into a standalone CLI script (`python3 lib/seed.py <tasks_file> <db_path> <label_slug>`) (#27)
+- `{{RALPH_DIR}}` placeholder substitution in `build_prompt()` (resolves to the Ralph installation directory) (#27)
+- `## Running tests` section in README documenting `brew install bats-core` and `bats test/` (#27)
+- `lib/routing.sh`, `lib/seed.py`, and `test/` added to the Files table in README (#27)
+
+### Added
 - `tasks.example.md` updated with all four task patterns: high-priority with acceptance criteria, normal priority, blocked-by dependency, and a fourth task; annotated with YAML comments and an HTML comment field reference (#26)
 - `## Authoring tasks.md` section in README documenting the `tasks.md` format (front matter fields, task headings, priority, blocked-by) (#26)
 - `## Storage` section in README explaining where `ralph.db` and `tasks.md` live (`~/.ralph/projects/<owner>-<repo>/<label>/`) (#26)
@@ -32,6 +42,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `{{DB_PATH}}`, `{{TASKS_FILE}}`, `{{TASK_ID}}`, and `{{PRD_OVERVIEW}}` placeholder substitutions in `build_prompt()` (#21)
 
 ### Changed
+- `modes/seed.md` simplified: the embedded Python script replaced by a one-line call to `lib/seed.py` (#27)
+- `ralph.sh` routing logic moved to `lib/routing.sh`; `ralph.sh` now sources it (#27)
 - README intro updated to describe the SQLite-based workflow rather than GitHub Issues (#26)
 - README Setup section reordered and updated to describe the SQLite workflow as the primary path (#26)
 - `modes/force-approve.md` rewritten to mark task `done` in SQLite and do a local `git merge --no-ff` — all `gh pr` calls removed (#24)

@@ -127,15 +127,35 @@ sqlite3 ~/.ralph/projects/<owner>-<repo>/<label>/ralph.db \
   "SELECT id, title, status FROM tasks;"
 ```
 
+## Running tests
+
+Ralph's test suite uses [bats-core](https://github.com/bats-core/bats-core). Install it first:
+
+```bash
+brew install bats-core   # macOS
+# or: sudo apt install bats   # Debian/Ubuntu
+```
+
+Then run from the Ralph repo root:
+
+```bash
+bats test/
+```
+
+Tests cover routing (what mode `determine_mode()` picks for a given DB state) and seeding (what rows `tasks.md` parsing produces). No GitHub repo or network access is required.
+
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `ralph.sh` | The loop script — generic, no project-specific code |
 | `install.sh` | Symlinks `ralph.sh` into `~/.local/bin/` for global access |
+| `lib/routing.sh` | `determine_mode()` routing logic — sourced by `ralph.sh` and tests |
+| `lib/seed.py` | Python script that parses `tasks.md` and seeds the SQLite DB |
 | `modes/` | Per-mode agent prompts (`implement.md`, `review.md`, `fix.md`, `merge.md`, etc.) |
 | `project.example.toml` | Annotated template — copy to `ralph.toml` in your project root and fill in |
 | `tasks.example.md` | Annotated example `tasks.md` showing all supported task patterns |
+| `test/` | bats test suite for routing and seeding |
 
 ## Customising modes
 
