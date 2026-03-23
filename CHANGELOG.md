@@ -7,6 +7,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `get_front_matter_field` and `set_front_matter_field` python3-based helpers in `ralph.sh` to read/write individual YAML front matter fields in task `.md` files (#37)
+- `determine_mode()` now scans `./plans/<label>/*.md` sorted by filename, parses YAML front matter, and applies the routing priority: `needs_review` → `review`, `needs_review_2` → `review-round2`, `needs_fix` → `fix`, `in_progress` → `fix` (resume), ready `pending` (high-priority first) → `implement`, all `done` → `feature-pr`, otherwise → `complete` (#37)
+- `{{TASK_FILE}}`, `{{TASK_ID}}`, `{{PRD_OVERVIEW}}`, and `{{PLANS_DIR}}` placeholder substitutions in `build_prompt()` (#37)
+- Preflight check: exits with a clear error when `./plans/<label>/` does not exist or contains no `.md` files (#37)
+
+### Changed
+- `RAW_LABEL` variable added to argument parsing; `PLANS_DIR` derived as `$GIT_ROOT/plans/$RAW_LABEL` (#37)
+- Preflight check in label mode now validates the local plans directory instead of checking GitHub Issues (#37)
+
+### Removed
+- GitHub Issues and PR-based routing logic from `determine_mode()` — replaced by Markdown/YAML front matter routing (#37)
+- `~/.ralph/` path reference removed from error messages (#37)
+
+### Added
 - `modes/feature-pr.md`: new mode that opens a `feat/<label> → main` PR when all task issues are closed and all task PRs are merged; includes explicit instruction never to review, approve, or merge the PR (#9)
 - `determine_mode()` in PRD mode: after no open task issues, checks for an existing `feat/<label> → main` PR — sets `MODE=feature-pr` if none exists, `MODE=complete` if one is already open (#9)
 - `--label=<label>` flag to `ralph.sh`; derives `FEATURE_BRANCH=feat/<label>` and `FEATURE_LABEL=prd/<label>` (#6)

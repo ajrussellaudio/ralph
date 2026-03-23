@@ -90,21 +90,30 @@ fi
 MAX_ITERATIONS="$1"
 FEATURE_LABEL=""
 FEATURE_BRANCH="main"
+RAW_LABEL=""
 
 if [[ $# -eq 2 ]]; then
   if [[ "$2" =~ ^--label=(.+)$ ]]; then
-    FEATURE_LABEL="prd/${BASH_REMATCH[1]}"
-    FEATURE_BRANCH="feat/${BASH_REMATCH[1]}"
+    RAW_LABEL="${BASH_REMATCH[1]}"
+    FEATURE_LABEL="prd/${RAW_LABEL}"
+    FEATURE_BRANCH="feat/${RAW_LABEL}"
   else
     usage
     exit 1
   fi
 fi
 
+PLANS_DIR="${GIT_ROOT}/plans/${RAW_LABEL}"
+
 # ── Preflight checks ───────────────────────────────────────────────────────────
 
 if ! command -v copilot &>/dev/null; then
   echo "Error: 'copilot' not found in PATH. Install the GitHub Copilot CLI first."
+  exit 1
+fi
+
+if ! command -v python3 &>/dev/null; then
+  echo "Error: python3 is required but not found in PATH."
   exit 1
 fi
 
@@ -121,26 +130,21 @@ fi
 
 if [[ -z "$TEST_CMD" ]]; then
   echo "Error: No test command configured. Add 'test = \"your-test-cmd\"' to"
-  echo "ralph.toml in your project root (create it from ~/.ralph/project.example.toml)."
+  echo "ralph.toml in your project root (copy from project.example.toml)."
   exit 1
 fi
 
-# In PRD mode, validate that either prd/* issues exist or the feature branch already
-# exists on origin. If neither is true, the label is almost certainly a typo.
-if [[ -n "$FEATURE_LABEL" ]]; then
-  if PRD_ISSUE_COUNT=$(gh issue list --repo "$REPO" --state open \
-      --label "$FEATURE_LABEL" \
-      --json number --jq 'length' \
-      < /dev/null 2>/dev/null); then
-    if [[ "$PRD_ISSUE_COUNT" -eq 0 ]]; then
-      if ! git -C "$GIT_ROOT" ls-remote --exit-code --heads origin "$FEATURE_BRANCH" > /dev/null 2>&1; then
-        echo "Error: No open issues with label '${FEATURE_LABEL}' found, and branch 'origin/${FEATURE_BRANCH}' does not exist."
-        echo "Check that --label matches an existing PRD label, or create the feature branch first."
-        exit 1
-      fi
-    fi
-  else
-    echo "Warning: Could not reach GitHub API; skipping PRD preflight check."
+# In label mode, validate that the plans directory exists and contains task files.
+if [[ -n "$RAW_LABEL" ]]; then
+  if [[ ! -d "$PLANS_DIR" ]]; then
+    echo "Error: Plans directory not found at ${PLANS_DIR}"
+    echo "Create it and add at least one task file (e.g. 01-first-task.md)."
+    exit 1
+  fi
+  if ! ls "${PLANS_DIR}"/*.md &>/dev/null; then
+    echo "Error: No .md task files found in ${PLANS_DIR}"
+    echo "Add at least one task file (e.g. 01-first-task.md)."
+    exit 1
   fi
 fi
 
@@ -181,121 +185,197 @@ fi
 
 git -C "$GIT_ROOT" worktree add --detach "$WORKTREE_DIR" "origin/$FEATURE_BRANCH"
 
+# ── YAML front matter helpers ──────────────────────────────────────────────────
+
+# Reads a single YAML front matter field value from a .md file.
+# Usage: get_front_matter_field <file> <field>
+get_front_matter_field() {
+  local file="$1" field="$2"
+  python3 - "$file" "$field" <<'PYEOF'
+import sys, re
+file_path, field = sys.argv[1], sys.argv[2]
+with open(file_path) as f:
+    content = f.read()
+m = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
+if not m:
+    sys.exit(0)
+for line in m.group(1).splitlines():
+    if re.match(r'^' + re.escape(field) + r'\s*:', line):
+        val = line.split(':', 1)[1].strip().strip('"').strip("'")
+        print(val, end='')
+        break
+PYEOF
+}
+
+# Overwrites a single YAML front matter field in a .md file without corrupting
+# the rest of the file.
+# Usage: set_front_matter_field <file> <field> <value>
+set_front_matter_field() {
+  local file="$1" field="$2" value="$3"
+  python3 - "$file" "$field" "$value" <<'PYEOF'
+import sys, re
+file_path, field, value = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(file_path) as f:
+    content = f.read()
+m = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
+if not m:
+    sys.exit(1)
+fm = m.group(1)
+new_fm = re.sub(
+    r'^(' + re.escape(field) + r'\s*:).*$',
+    lambda _: field + ': ' + value,
+    fm,
+    flags=re.MULTILINE
+)
+if new_fm == fm:
+    sys.stderr.write(f"Warning: field '{field}' not found in front matter\n")
+    sys.exit(1)
+new_content = '---\n' + new_fm + '\n---' + content[m.end():]
+with open(file_path, 'w') as f:
+    f.write(new_content)
+PYEOF
+}
+
 # ── Routing ────────────────────────────────────────────────────────────────────
 
-# Populates MODE, PR_NUMBER, ISSUE_NUMBER based on current GitHub state.
-# MODE is one of: implement | review | review-round2 | fix | force-approve | merge | complete
+# Populates MODE, TASK_FILE, TASK_ID based on YAML front matter in task files.
+# MODE is one of: implement | review | review-round2 | fix | feature-pr | complete
 determine_mode() {
   PR_NUMBER=""
   ISSUE_NUMBER=""
+  TASK_FILE=""
+  TASK_ID=""
 
-  echo "  🔄 Syncing workspace…"
-  (cd "$WORKTREE_DIR" && git fetch origin && git reset --hard "origin/$FEATURE_BRANCH") > /dev/null 2>&1
+  if [[ -z "$RAW_LABEL" ]]; then
+    MODE="complete"
+    echo "  ▶  Mode: $MODE  (no --label given)"
+    return
+  fi
 
-  echo "  🔍 Checking for open ralph PRs in ${REPO}…"
-  OPEN_RALPH_PRS=$(gh pr list --repo "$REPO" --state open \
-    --base "$FEATURE_BRANCH" \
-    --json number,headRefName \
-    --jq '[.[] | select(.headRefName | startswith("ralph/issue-"))] | sort_by(.number)' \
-    < /dev/null 2>/dev/null || echo "[]")
+  echo "  🔍 Scanning task files in ${PLANS_DIR}…"
 
-  PR_COUNT=$(echo "$OPEN_RALPH_PRS" | jq length)
+  local routing
+  if ! routing=$(python3 - "$PLANS_DIR" <<'PYEOF'
+import sys, os, re, glob
 
-  if [[ "$PR_COUNT" -gt 0 ]]; then
-    PR_NUMBER=$(echo "$OPEN_RALPH_PRS" | jq -r '.[0].number')
+plans_dir = sys.argv[1]
 
-    COMMENT_BODIES=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-      --json comments --jq '[.comments[].body] | join("\n---\n")' \
-      < /dev/null 2>/dev/null || echo "")
+def parse_front_matter(path):
+    with open(path) as f:
+        content = f.read()
+    m = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
+    if not m:
+        return {}
+    fm = {}
+    for line in m.group(1).splitlines():
+        if ':' in line:
+            k, _, v = line.partition(':')
+            fm[k.strip()] = v.strip().strip('"').strip("'")
+    return fm
 
-    APPROVED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: APPROVED" 2>/dev/null || true)
-    CHANGES_REQUESTED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: REQUEST_CHANGES" 2>/dev/null || true)
+files = sorted(glob.glob(os.path.join(plans_dir, '*.md')))
+tasks = []
+for f in files:
+    fm = parse_front_matter(f)
+    tid_m = re.match(r'^(\d+)', os.path.basename(f))
+    if not tid_m:
+        continue
+    tasks.append({
+        'file': f,
+        'id': tid_m.group(1),
+        'status': fm.get('status', 'pending'),
+        'priority': fm.get('priority', 'normal'),
+        'blocked_by': [int(x) for x in re.findall(r'\d+', fm.get('blocked_by', '[]'))],
+    })
 
-    if [[ "${APPROVED:-0}" -gt 0 ]]; then
-      MODE="merge"
-    elif [[ "${CHANGES_REQUESTED:-0}" -ge 2 ]]; then
-      MODE="force-approve"
-    elif [[ "${CHANGES_REQUESTED:-0}" -eq 1 ]]; then
-      # If commits were pushed after the REQUEST_CHANGES comment → round 2 review
-      # Otherwise → fix mode (no new commits yet)
-      LAST_RC_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-        --json comments \
-        --jq '[.comments[] | select(.body | contains("RALPH-REVIEW: REQUEST_CHANGES"))] | last | .createdAt // ""' \
-        < /dev/null 2>/dev/null || echo "")
-      LATEST_COMMIT_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-        --json commits \
-        --jq '.commits | last | .committedDate // ""' \
-        < /dev/null 2>/dev/null || echo "")
+if not tasks:
+    print('complete\t\t')
+    sys.exit(0)
 
-      if [[ -n "$LATEST_COMMIT_TIME" && -n "$LAST_RC_TIME" && "$LATEST_COMMIT_TIME" > "$LAST_RC_TIME" ]]; then
-        MODE="review-round2"
-      else
-        MODE="fix"
-      fi
-    else
-      MODE="review"
-    fi
+status_map = {int(t['id']): t['status'] for t in tasks}
 
-    echo "  ▶  Mode: $MODE  (PR #$PR_NUMBER)"
-  else
-    echo "  🔍 No open ralph PRs — checking issues…"
+def deps_done(blocked_by):
+    return all(status_map.get(dep) == 'done' for dep in blocked_by)
 
-    # Pick highest-priority open issue: high-priority label first, then lowest number.
-    # PRD mode: --label scopes to prd/<label>; exclude the PRD issue itself (prd) and blocked.
-    # Standalone mode: no label filter; additionally exclude any issue carrying a prd/* label.
-    if [[ -n "$FEATURE_LABEL" ]]; then
-      ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
-        --label "$FEATURE_LABEL" \
-        --json number,labels --limit 100 \
-        --jq '
-          [.[] | select(.labels | map(.name) | (any(. == "prd") or any(. == "blocked")) | not)]
-          | (
-              (map(select(.labels | map(.name) | any(. == "high priority"))) | sort_by(.number) | first)
-              // (sort_by(.number) | first)
-            )
-          | .number // empty
-        ' \
-        < /dev/null 2>/dev/null || echo "")
-    else
-      ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
-        --json number,labels --limit 100 \
-        --jq '
-          [.[] | select(.labels | map(.name) | (any(. == "prd") or any(startswith("prd/")) or any(. == "blocked")) | not)]
-          | (
-              (map(select(.labels | map(.name) | any(. == "high priority"))) | sort_by(.number) | first)
-              // (sort_by(.number) | first)
-            )
-          | .number // empty
-        ' \
-        < /dev/null 2>/dev/null || echo "")
-    fi
+# Priority 1: needs_review
+for t in tasks:
+    if t['status'] == 'needs_review':
+        print(f"review\t{t['file']}\t{t['id']}")
+        sys.exit(0)
 
-    if [[ -n "$ISSUE_NUMBER" ]]; then
-      MODE="implement"
-      echo "  ▶  Mode: $MODE  (Issue #$ISSUE_NUMBER)"
-    elif [[ -n "$FEATURE_LABEL" && "$FEATURE_BRANCH" != "main" ]]; then
-      # PRD mode with no remaining task issues — check for an existing feat→main PR
-      FEATURE_PR_COUNT=$(gh pr list --repo "$REPO" --state open \
-        --base "main" \
-        --head "$FEATURE_BRANCH" \
-        --json number --jq 'length' \
-        < /dev/null 2>/dev/null)
+# Priority 2: needs_review_2
+for t in tasks:
+    if t['status'] == 'needs_review_2':
+        print(f"review-round2\t{t['file']}\t{t['id']}")
+        sys.exit(0)
 
-      if [[ "$FEATURE_PR_COUNT" == "0" ]]; then
-        MODE="feature-pr"
-        echo "  ▶  Mode: $MODE  (all task issues closed, opening feat→main PR)"
-      else
-        MODE="complete"
-        echo "  ▶  Mode: $MODE  (feat→main PR already open or check failed)"
-      fi
+# Priority 3: needs_fix
+for t in tasks:
+    if t['status'] == 'needs_fix':
+        print(f"fix\t{t['file']}\t{t['id']}")
+        sys.exit(0)
+
+# Priority 4: in_progress (resume interrupted work)
+for t in tasks:
+    if t['status'] == 'in_progress':
+        print(f"fix\t{t['file']}\t{t['id']}")
+        sys.exit(0)
+
+# Priority 5: pending with all blocked_by deps done (high priority first)
+ready = [t for t in tasks if t['status'] == 'pending' and deps_done(t['blocked_by'])]
+high = [t for t in ready if t['priority'] == 'high']
+if high:
+    t = high[0]
+    print(f"implement\t{t['file']}\t{t['id']}")
+    sys.exit(0)
+if ready:
+    t = ready[0]
+    print(f"implement\t{t['file']}\t{t['id']}")
+    sys.exit(0)
+
+# All done?
+if all(t['status'] == 'done' for t in tasks):
+    print('all-done\t\t')
+    sys.exit(0)
+
+# Otherwise (all remaining tasks are blocked)
+print('complete\t\t')
+PYEOF
+); then
+    echo "Error: routing script failed — check task files in ${PLANS_DIR}"
+    exit 1
+  fi
+
+  local mode task_file task_id
+  IFS=$'\t' read -r mode task_file task_id <<< "$routing"
+
+  if [[ "$mode" == "all-done" ]]; then
+    local feature_pr_count
+    feature_pr_count=$(gh pr list --repo "$REPO" --state open \
+      --base "main" \
+      --head "$FEATURE_BRANCH" \
+      --json number --jq 'length' \
+      < /dev/null 2>/dev/null || echo "1")
+    if [[ "$feature_pr_count" == "0" ]]; then
+      MODE="feature-pr"
+      echo "  ▶  Mode: $MODE  (all tasks done, opening feat→main PR)"
     else
       MODE="complete"
-      echo "  ▶  Mode: $MODE  (no open issues or PRs)"
+      echo "  ▶  Mode: $MODE  (all tasks done, feature PR already open)"
+    fi
+  else
+    MODE="$mode"
+    TASK_FILE="$task_file"
+    TASK_ID="$task_id"
+    if [[ "$MODE" == "complete" ]]; then
+      echo "  ▶  Mode: $MODE  (no work to do)"
+    else
+      echo "  ▶  Mode: $MODE  (Task $TASK_ID)"
     fi
   fi
 }
 
-# Loads the mode file and substitutes {{REPO}}, {{PR_NUMBER}}, {{ISSUE_NUMBER}}.
+# Loads the mode file and substitutes all placeholders.
 build_prompt() {
   local mode_file="$MODES_DIR/$MODE.md"
   if [[ ! -f "$mode_file" ]]; then
@@ -311,6 +391,24 @@ build_prompt() {
   PROMPT="${PROMPT//\{\{TEST_CMD\}\}/$TEST_CMD}"
   PROMPT="${PROMPT//\{\{FEATURE_BRANCH\}\}/$FEATURE_BRANCH}"
   PROMPT="${PROMPT//\{\{FEATURE_LABEL\}\}/$FEATURE_LABEL}"
+  PROMPT="${PROMPT//\{\{TASK_FILE\}\}/$TASK_FILE}"
+  PROMPT="${PROMPT//\{\{TASK_ID\}\}/$TASK_ID}"
+  PROMPT="${PROMPT//\{\{PLANS_DIR\}\}/$PLANS_DIR}"
+
+  # Populate {{PRD_OVERVIEW}} from plans/<label>.md — body only, front matter stripped.
+  local prd_overview=""
+  local prd_file="${GIT_ROOT}/plans/${RAW_LABEL}.md"
+  if [[ -n "$RAW_LABEL" && -f "$prd_file" ]]; then
+    prd_overview=$(python3 - "$prd_file" <<'PYEOF'
+import sys, re
+with open(sys.argv[1]) as f:
+    content = f.read()
+body = re.sub(r'^---\n.*?\n---\n?', '', content, count=1, flags=re.DOTALL).strip()
+print(body)
+PYEOF
+)
+  fi
+  PROMPT="${PROMPT//\{\{PRD_OVERVIEW\}\}/$prd_overview}"
 }
 
 # ── Main loop ──────────────────────────────────────────────────────────────────
