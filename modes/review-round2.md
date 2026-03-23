@@ -4,7 +4,7 @@ You are verifying that round-1 review issues have been fixed for task `{{TASK_ID
 
 ## Step 1 — Read branch and prior review notes
 
-Read the `branch` and `review_notes` fields from `{{TASK_FILE}}`'s YAML front matter:
+Read the `branch` and all `review_notes` entries from `{{TASK_FILE}}`'s YAML front matter:
 
 ```bash
 python3 - <<'EOF'
@@ -23,14 +23,22 @@ fm = fm_m.group(1)
 bm = re.search(r'(?m)^branch:\s*(\S+)', fm)
 print("branch:", bm.group(1) if bm else "")
 
-# Read review_notes (block scalar or inline)
-nm = re.search(r'(?m)^review_notes:\s*\|\n((?:(?:  [^\n]*)?\n)*)', fm)
-if nm:
-    notes = "\n".join(l[2:] if l.startswith("  ") else l for l in nm.group(1).splitlines())
+# Read all review_notes entries (full history)
+notes = []
+rn_match = re.search(r'(?m)^review_notes:(?:[^\n]*\n?)((?:[ \t]+[^\n]*\n?)*)', fm)
+if rn_match:
+    for em in re.finditer(r'[ \t]+-[ \t]+\|\n((?:(?:[ \t]{4}[^\n]*)?\n)*)', rn_match.group(0)):
+        lines = [l[4:] if l.startswith('    ') else '' for l in em.group(1).splitlines()]
+        notes.append('\n'.join(lines).rstrip())
+
+if notes:
+    print(f"review_notes ({len(notes)} entr{'y' if len(notes)==1 else 'ies'}):")
+    for i, note in enumerate(notes, 1):
+        print(f"  [Entry {i}]")
+        for line in note.splitlines():
+            print(f"    {line}")
 else:
-    nm = re.search(r'(?m)^review_notes:\s*(.+)$', fm)
-    notes = nm.group(1).strip() if nm else ""
-print("review_notes:", notes)
+    print("review_notes: (none)")
 EOF
 ```
 
@@ -96,7 +104,7 @@ Then emit `<promise>STOP</promise>` as your **final output** and stop immediatel
 
 ## Step 6: Update review notes and set `status: needs_fix` (issues unresolved path)
 
-Update `{{TASK_FILE}}`'s YAML front matter with the still-unresolved issues and set `status: needs_fix`:
+Update `{{TASK_FILE}}`'s YAML front matter: set `status: needs_fix` and **append** a new `|` block scalar entry to the `review_notes` list with the still-unresolved issues:
 
 ```bash
 python3 - <<'PYEOF'
@@ -116,12 +124,29 @@ rest = content[fm_m.end():]
 # Update status
 fm = re.sub(r'(?m)^(status:\s*)\S+', r'\g<1>needs_fix', fm)
 
-# Remove existing review_notes (inline or block scalar)
-fm = re.sub(r'(?m)^review_notes:[^\n]*(?:\n(?:  [^\n]*)?)*\n?', '', fm)
+# Parse existing | block scalar entries from review_notes
+existing = []
+rn_match = re.search(r'(?m)^review_notes:(?:[^\n]*\n?)((?:[ \t]+[^\n]*\n?)*)', fm)
+if rn_match:
+    for em in re.finditer(r'[ \t]+-[ \t]+\|\n((?:(?:[ \t]{4}[^\n]*)?\n)*)', rn_match.group(0)):
+        lines = [l[4:] if l.startswith('    ') else '' for l in em.group(1).splitlines()]
+        existing.append('\n'.join(lines).rstrip())
 
-# Append updated review_notes as a YAML block scalar
-review_notes = """<paste the unresolved issues here>"""
-block = "review_notes: |\n" + "\n".join("  " + line for line in review_notes.strip().splitlines())
+# Remove existing review_notes block
+fm = re.sub(r'(?m)^review_notes:(?:[^\n]*\n?)(?:[ \t]+[^\n]*\n?)*', '', fm)
+
+# New review note — replace this placeholder with the still-unresolved issues
+new_note = """<paste the unresolved issues here>"""
+existing.append(new_note.strip())
+
+# Build YAML list of | block scalars
+entries_yaml = ''
+for note in existing:
+    entries_yaml += '  - |\n'
+    for line in note.splitlines():
+        entries_yaml += '    ' + line + '\n'
+
+block = 'review_notes:\n' + entries_yaml
 fm = fm.rstrip('\n') + '\n' + block + '\n'
 
 with open(path, 'w') as f:

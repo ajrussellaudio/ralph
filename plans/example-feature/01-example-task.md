@@ -32,11 +32,10 @@ branch:
 fix_count: 0
 
 # review_notes — set automatically by Ralph. Do not edit by hand.
-# The review mode writes a summary of issues found here as a YAML block scalar.
-# The fix mode reads these notes as context when applying corrections.
-# review_notes: |
-#   src/widget.ts line 42: missing null check on user input
-#   src/widget.test.ts: no test for the error path
+# An append-only list of | block scalars. Each review round adds a new entry.
+# The fix mode reads the last entry as its actionable instruction.
+# review-round2 reads the full list for context before writing a new entry.
+review_notes: []
 ---
 
 # Example Task: Add notification preferences API endpoint

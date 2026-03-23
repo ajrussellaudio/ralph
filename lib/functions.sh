@@ -59,6 +59,113 @@ with open(file_path, 'w') as f:
 PYEOF
 }
 
+# Appends a new | block scalar entry to the review_notes list in a .md task file.
+# The review_notes field must be either `review_notes: []` or an existing list.
+# Usage: append_review_note <file> <note_text>
+append_review_note() {
+  local file="$1" note="$2"
+  python3 - "$file" "$note" <<'PYEOF'
+import sys, re
+
+file_path, new_note = sys.argv[1], sys.argv[2]
+with open(file_path) as f:
+    content = f.read()
+
+fm_m = re.match(r'^---\n(.*?)\n---\n', content, re.DOTALL)
+if not fm_m:
+    sys.exit("No front matter found")
+
+fm = fm_m.group(1)
+rest = content[fm_m.end():]
+
+# Parse existing | block scalar entries
+existing = []
+rn_match = re.search(r'(?m)^review_notes:(?:[^\n]*\n?)((?:(?:  -|    )[^\n]*\n?)*)', fm)
+if rn_match:
+    for em in re.finditer(r'[ \t]+-[ \t]+\|\n((?:(?:[ \t]{4}[^\n]*)?\n)*)', rn_match.group(0)):
+        lines = [l[4:] if l.startswith('    ') else '' for l in em.group(1).splitlines()]
+        existing.append('\n'.join(lines).rstrip())
+
+# Remove existing review_notes block
+fm = re.sub(r'(?m)^review_notes:(?:[^\n]*\n?)(?:(?:  -|    )[^\n]*\n?)*', '', fm)
+
+# Append new entry
+existing.append(new_note.strip())
+
+# Build YAML list of | block scalars
+entries_yaml = ''
+for note in existing:
+    entries_yaml += '  - |\n'
+    for line in note.splitlines():
+        entries_yaml += '    ' + line + '\n'
+
+block = 'review_notes:\n' + entries_yaml
+fm = fm.rstrip('\n') + '\n' + block + '\n'
+
+with open(file_path, 'w') as f:
+    f.write(f"---\n{fm}---\n{rest}")
+PYEOF
+}
+
+# Returns the last entry in the review_notes list from a .md task file.
+# Usage: get_last_review_note <file>
+get_last_review_note() {
+  local file="$1"
+  python3 - "$file" <<'PYEOF'
+import sys, re
+
+file_path = sys.argv[1]
+with open(file_path) as f:
+    content = f.read()
+
+fm_m = re.match(r'^---\n(.*?)\n---\n', content, re.DOTALL)
+if not fm_m:
+    sys.exit(0)
+fm = fm_m.group(1)
+
+notes = []
+rn_match = re.search(r'(?m)^review_notes:(?:[^\n]*\n?)((?:(?:  -|    )[^\n]*\n?)*)', fm)
+if rn_match:
+    for em in re.finditer(r'[ \t]+-[ \t]+\|\n((?:(?:[ \t]{4}[^\n]*)?\n)*)', rn_match.group(0)):
+        lines = [l[4:] if l.startswith('    ') else '' for l in em.group(1).splitlines()]
+        notes.append('\n'.join(lines).rstrip())
+
+if notes:
+    print(notes[-1], end='')
+PYEOF
+}
+
+# Returns all entries in the review_notes list, each prefixed with "[Review N]".
+# Usage: get_all_review_notes <file>
+get_all_review_notes() {
+  local file="$1"
+  python3 - "$file" <<'PYEOF'
+import sys, re
+
+file_path = sys.argv[1]
+with open(file_path) as f:
+    content = f.read()
+
+fm_m = re.match(r'^---\n(.*?)\n---\n', content, re.DOTALL)
+if not fm_m:
+    sys.exit(0)
+fm = fm_m.group(1)
+
+notes = []
+rn_match = re.search(r'(?m)^review_notes:(?:[^\n]*\n?)((?:(?:  -|    )[^\n]*\n?)*)', fm)
+if rn_match:
+    for em in re.finditer(r'[ \t]+-[ \t]+\|\n((?:(?:[ \t]{4}[^\n]*)?\n)*)', rn_match.group(0)):
+        lines = [l[4:] if l.startswith('    ') else '' for l in em.group(1).splitlines()]
+        notes.append('\n'.join(lines).rstrip())
+
+for i, note in enumerate(notes, 1):
+    print(f"[Review {i}]")
+    for line in note.splitlines():
+        print(f"  {line}")
+    print()
+PYEOF
+}
+
 # ── Routing ────────────────────────────────────────────────────────────────────
 
 # Populates MODE, TASK_FILE, TASK_ID based on YAML front matter in task files.

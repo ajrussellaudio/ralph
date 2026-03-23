@@ -6,7 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- `review_notes` in task file front matter changed from a single overwritten block scalar to an append-only list of `|` block scalars; each review round appends a new entry preserving full history (#50)
+- `review.md`: Step 6 now appends a new `|` block scalar entry to the `review_notes` list instead of overwriting it (#50)
+- `review-round2.md`: Step 1 now reads and displays all `review_notes` entries for context; Step 6 appends a new entry instead of overwriting (#50)
+- `fix.md`: Step 1 now reads only the last entry in `review_notes` as the actionable instruction (#50)
+- `plans/example-feature/01-example-task.md`: `review_notes` initialises to `[]` (#50)
+- `test/test_helper.bash`: `create_task_file` now always emits `review_notes: []` by default (#50)
+
 ### Added
+- `lib/functions.sh`: `append_review_note`, `get_last_review_note`, and `get_all_review_notes` helper functions for review notes array manipulation (#50)
+- `test/yaml_helpers.bats`: tests for `append_review_note` (empty list, two rounds, colons, multi-line, field preservation, body preservation), `get_last_review_note`, and `get_all_review_notes` (#50)
+
+
 - `test/routing.bats`: bats test suite covering all `determine_mode()` routing cases — pending→implement, in_progress→fix, needs_review→review, needs_fix (fix_count=0)→fix, needs_fix (fix_count≥2)→force-approve, needs_review_2→review-round2/force-approve, all-done→feature-pr/complete, all-blocked→blocked, priority ordering, and blocked-by dependency skipping (#42)
 - `test/yaml_helpers.bats`: bats tests for `get_front_matter_field` (string, integer, list, missing field) and `set_front_matter_field` (update, no side effects on other fields, body preservation, error on missing field) (#42)
 - `test/test_helper.bash`: shared bats test helper defining `create_task_file` and sourcing `lib/functions.sh` with minimal required globals (#42)
