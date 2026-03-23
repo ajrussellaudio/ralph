@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `implement.md` (markdown-backend): reads task body from `{{TASK_FILE}}` and PRD context from `{{PRD_OVERVIEW}}`, creates a local `ralph/task-{{TASK_ID}}` branch (never pushed to remote), sets `status: in_progress` before starting and `status: needs_review` + `branch: ralph/task-{{TASK_ID}}` after committing (#38)
+- `merge.md` (markdown-backend): reads the task branch from the task file's YAML front matter, performs a local `git merge --no-ff`, deletes the task branch, and sets `status: done` in the task file (#38)
+- Routing in `determine_mode()`: `status: needs_review` with a `branch` field set now routes to `merge` mode (local branch); without a `branch` field it continues to route to `review` mode (PR-based) (#38)
+
+
 - `get_front_matter_field` and `set_front_matter_field` python3-based helpers in `ralph.sh` to read/write individual YAML front matter fields in task `.md` files (#37)
 - `determine_mode()` now scans `./plans/<label>/*.md` sorted by filename, parses YAML front matter, and applies the routing priority: `needs_review` → `review`, `needs_review_2` → `review-round2`, `needs_fix` → `fix`, `in_progress` → `fix` (resume), ready `pending` (high-priority first) → `implement`, all `done` → `feature-pr`, otherwise → `complete` (#37)
 - `{{TASK_FILE}}`, `{{TASK_ID}}`, `{{PRD_OVERVIEW}}`, and `{{PLANS_DIR}}` placeholder substitutions in `build_prompt()` (#37)
