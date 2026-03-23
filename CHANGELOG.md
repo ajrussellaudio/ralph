@@ -7,6 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `tasks.example.md` updated with all four task patterns: high-priority with acceptance criteria, normal priority, blocked-by dependency, and a fourth task; annotated with YAML comments and an HTML comment field reference (#26)
+- `## Authoring tasks.md` section in README documenting the `tasks.md` format (front matter fields, task headings, priority, blocked-by) (#26)
+- `## Storage` section in README explaining where `ralph.db` and `tasks.md` live (`~/.ralph/projects/<owner>-<repo>/<label>/`) (#26)
+- `sqlite3` listed as a requirement in README (#26)
+- `tasks.example.md` added to the Files table in README (#26)
+
+### Changed
+- README intro updated to describe the SQLite-based workflow rather than GitHub Issues (#26)
+- README Setup section reordered and updated to describe the SQLite workflow as the primary path (#26)
+
+### Added
 - `blocked_by` dependency enforcement in `determine_mode()`: tasks whose `blocked_by` dependency is not `done` are skipped; when all pending tasks are blocked, Ralph exits with a clear "blocked" message (exit 1) rather than falsely declaring complete (#25)
 - `modes/merge.md`: after marking a task `done`, queries for tasks blocked by it and emits a `🔓 Task N is now unblocked.` log line for each (#25)
 - `fix_count INTEGER DEFAULT 0` column on `tasks` table; existing DBs migrated via `ALTER TABLE` on startup (#24)
