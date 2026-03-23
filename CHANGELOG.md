@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `blocked_by` dependency enforcement in `determine_mode()`: tasks whose `blocked_by` dependency is not `done` are skipped; when all pending tasks are blocked, Ralph exits with a clear "blocked" message (exit 1) rather than falsely declaring complete (#25)
+- `modes/merge.md`: after marking a task `done`, queries for tasks blocked by it and emits a `🔓 Task N is now unblocked.` log line for each (#25)
 - `fix_count INTEGER DEFAULT 0` column on `tasks` table; existing DBs migrated via `ALTER TABLE` on startup (#24)
 - `force-approve` routing: when `status='needs_fix'` and `fix_count >= 2`, `determine_mode()` routes to `force-approve` instead of `fix` (#24)
 
