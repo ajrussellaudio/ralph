@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `test/routing.bats`: bats test suite covering all `determine_mode()` routing cases — pending→implement, in_progress→fix, needs_review→review, needs_fix (fix_count=0)→fix, needs_fix (fix_count≥2)→force-approve, needs_review_2→review-round2/force-approve, all-done→feature-pr/complete, all-blocked→blocked, priority ordering, and blocked-by dependency skipping (#42)
+- `test/yaml_helpers.bats`: bats tests for `get_front_matter_field` (string, integer, list, missing field) and `set_front_matter_field` (update, no side effects on other fields, body preservation, error on missing field) (#42)
+- `test/test_helper.bash`: shared bats test helper defining `create_task_file` and sourcing `lib/functions.sh` with minimal required globals (#42)
+- `lib/functions.sh`: extracted YAML front matter helpers and routing functions from `ralph.sh` into a standalone sourceable library, enabling bats tests to import only the functions they exercise (#42)
+- `ralph.toml`: project configuration file for ralph's self-test workflow; sets `test = "bats test/"` (#42)
 - `plans/example-feature.md`: example PRD overview file demonstrating the `plans/` directory structure (#41)
 - `plans/example-feature/01-example-task.md`: example task file documenting every YAML front matter field (`status`, `priority`, `blocked_by`, `branch`, `fix_count`, `review_notes`) with inline comments explaining each field and its allowed values (#41)
 
