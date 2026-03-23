@@ -347,7 +347,7 @@ if all(t['status'] == 'done' for t in tasks):
     sys.exit(0)
 
 # Otherwise (all remaining tasks are blocked)
-print('complete\t\t')
+print('blocked\t\t')
 PYEOF
 ); then
     echo "Error: routing script failed — check task files in ${PLANS_DIR}"
@@ -371,6 +371,9 @@ PYEOF
       MODE="complete"
       echo "  ▶  Mode: $MODE  (all tasks done, feature PR already open)"
     fi
+  elif [[ "$mode" == "blocked" ]]; then
+    MODE="blocked"
+    echo "  ▶  Mode: blocked  (all remaining pending tasks are blocked)"
   else
     MODE="$mode"
     TASK_FILE="$task_file"
@@ -451,6 +454,17 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     printf "\033[0m"
     exit 0
+  fi
+
+  # Blocked — all remaining pending tasks are waiting on unfinished dependencies
+  if [[ "$MODE" == "blocked" ]]; then
+    echo ""
+    printf "\033[1;33m"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🚫  Ralph stopped: all remaining tasks are blocked by unfinished dependencies"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    printf "\033[0m"
+    exit 1
   fi
 
   build_prompt
