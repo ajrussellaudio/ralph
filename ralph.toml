@@ -1,0 +1,11 @@
+# Ralph project configuration
+# Copy this file to ralph.toml at your project root and fill in the values.
+
+# GitHub repo slug (owner/repo). Optional — Ralph infers it from `gh repo view`.
+repo = "ajrussellaudio/ralph"
+
+# Build command — leave empty if no build step.
+build = ""
+
+# Test command — required.
+test = "bats test/"
