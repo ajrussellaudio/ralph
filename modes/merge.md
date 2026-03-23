@@ -29,6 +29,14 @@ git checkout {{FEATURE_BRANCH}}
 git merge --no-ff <branch-from-step-1>
 ```
 
+If the merge exits non-zero (conflicts), run:
+
+```bash
+git merge --abort
+```
+
+Then emit `<promise>STOP</promise>` as your final output and stop immediately.
+
 ## Step 3 — Delete the task branch
 
 Remove the task branch locally. Do **not** push anything — the remote must have no `ralph/task-*` branches:
