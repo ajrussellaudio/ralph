@@ -7,17 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `tasks.example.md` updated with all four task patterns: high-priority with acceptance criteria, normal priority, blocked-by dependency, and a fourth task; annotated with YAML comments and an HTML comment field reference (#26)
+- `## Authoring tasks.md` section in README documenting the `tasks.md` format (front matter fields, task headings, priority, blocked-by) (#26)
+- `## Storage` section in README explaining where `ralph.db` and `tasks.md` live (`~/.ralph/projects/<owner>-<repo>/<label>/`) (#26)
+- `sqlite3` listed as a requirement in README (#26)
+- `tasks.example.md` added to the Files table in README (#26)
 - `blocked_by` dependency enforcement in `determine_mode()`: tasks whose `blocked_by` dependency is not `done` are skipped; when all pending tasks are blocked, Ralph exits with a clear "blocked" message (exit 1) rather than falsely declaring complete (#25)
 - `modes/merge.md`: after marking a task `done`, queries for tasks blocked by it and emits a `🔓 Task N is now unblocked.` log line for each (#25)
 - `fix_count INTEGER DEFAULT 0` column on `tasks` table; existing DBs migrated via `ALTER TABLE` on startup (#24)
 - `force-approve` routing: when `status='needs_fix'` and `fix_count >= 2`, `determine_mode()` routes to `force-approve` instead of `fix` (#24)
-
-### Changed
-- `modes/force-approve.md` rewritten to mark task `done` in SQLite and do a local `git merge --no-ff` — all `gh pr` calls removed (#24)
-- `modes/fix.md` now increments `fix_count` alongside setting `status='needs_review_2'` (#24)
-- `modes/review-round2.md` unresolved path now sets `status='needs_fix'` (was `approved`) so the fix/force-approve cycle is triggered correctly (#24)
-
-### Added
 - `modes/seed.md`: new mode that parses `tasks.md` and populates the DB on first run (#22)
 - `tasks.example.md`: reference example showing the `tasks.md` format (#22)
 - `seed_if_empty()` in `ralph.sh`: checks if the tasks table is empty before the main loop; exits with a clear error (including the expected path) if `tasks.md` is missing, otherwise invokes the seed mode (#22)
@@ -34,6 +32,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `{{DB_PATH}}`, `{{TASKS_FILE}}`, `{{TASK_ID}}`, and `{{PRD_OVERVIEW}}` placeholder substitutions in `build_prompt()` (#21)
 
 ### Changed
+- README intro updated to describe the SQLite-based workflow rather than GitHub Issues (#26)
+- README Setup section reordered and updated to describe the SQLite workflow as the primary path (#26)
+- `modes/force-approve.md` rewritten to mark task `done` in SQLite and do a local `git merge --no-ff` — all `gh pr` calls removed (#24)
+- `modes/fix.md` now increments `fix_count` alongside setting `status='needs_review_2'` (#24)
+- `modes/review-round2.md` unresolved path now sets `status='needs_fix'` (was `approved`) so the fix/force-approve cycle is triggered correctly (#24)
 - `determine_mode()` now queries SQLite task statuses (`needs_review`, `approved`, `needs_review_2`, `needs_fix`, `in_progress`, `pending`) instead of `gh issue list` / `gh pr list`; priority ordering uses `high` priority first then lowest `id` (#23)
 - `modes/implement.md` rewritten to read task details from SQLite, create a local-only branch `ralph/task-<id>`, commit, and update DB status to `needs_review` — no `git push` or `gh pr create` (#23)
 - `modes/merge.md` rewritten to do a local `git merge --no-ff`, delete the task branch, mark the task `done` in DB, and push only the feature branch — all `gh pr merge`, `gh pr checks`, `gh issue close`, and rebase steps removed (#23)
