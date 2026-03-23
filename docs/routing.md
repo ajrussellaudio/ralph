@@ -30,7 +30,7 @@ flowchart TD
     R7 -->|Yes| BLOCKED([⏸ Stop — blocked])
     R7 -->|No| R8{All tasks\ndone?}
 
-    R8 -->|No| FALLBACK([✅ Stop — no work])
+    R8 -->|No| FALLBACK([⚠️ Stop — unexpected state])
     R8 -->|Yes| R9{feat→main PR\nalready open?}
 
     R9 -->|No| FPR[feature-pr.md]
