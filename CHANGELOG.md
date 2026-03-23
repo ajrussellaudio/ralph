@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `blocked_by` dependency enforcement in `determine_mode()`: pending tasks whose `blocked_by` list contains any task ID not yet `status: done` are skipped; if all remaining pending tasks are blocked, routing exits with a `🚫 blocked` message and exit code 1 rather than looping (#40)
+- Step 5 in `merge.md`: after marking a task `done`, scans all other task files for any pending tasks that listed the completed task in their `blocked_by` field and logs which tasks are now unblocked (#40)
+
+### Added
 - `review.md` (markdown-backend): reads branch from task file front matter, diffs local task branch against feature branch via sub-agent, writes `review_notes` as a YAML block scalar and sets `status: needs_fix` on issues, or performs local merge and sets `status: done` on approval — no GitHub PR comments (#39)
 - `review-round2.md` (markdown-backend): same as `review.md` but also reads prior `review_notes` from front matter as context for the verification sub-agent (#39)
 - `fix.md` (markdown-backend): reads `review_notes` and `branch` from task file front matter, checks out the task branch, applies fixes, increments `fix_count`, and sets `status: needs_review_2` (#39)

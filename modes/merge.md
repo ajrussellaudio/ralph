@@ -61,7 +61,44 @@ git add "{{TASK_FILE}}"
 git commit -m "chore: mark task {{TASK_ID}} done"
 ```
 
-## Step 5 — Stop
+## Step 5 — Log newly unblocked tasks
+
+Scan all other task files in `{{PLANS_DIR}}` for any that list `{{TASK_ID}}` in their `blocked_by` field. Print the names of any tasks that are now unblocked. No changes are needed — routing will pick them up automatically on the next iteration.
+
+```bash
+python3 - <<'EOF'
+import re, glob, os
+
+task_id = int("{{TASK_ID}}")
+plans_dir = "{{PLANS_DIR}}"
+task_file = "{{TASK_FILE}}"
+
+unblocked = []
+for path in sorted(glob.glob(os.path.join(plans_dir, '*.md'))):
+    if os.path.abspath(path) == os.path.abspath(task_file):
+        continue
+    content = open(path).read()
+    m = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
+    if not m:
+        continue
+    blocked_by_line = re.search(r'^blocked_by\s*:\s*(.+)$', m.group(1), re.MULTILINE)
+    if not blocked_by_line:
+        continue
+    ids = [int(x) for x in re.findall(r'\d+', blocked_by_line.group(1))]
+    if task_id in ids:
+        status_match = re.search(r'^status\s*:\s*(\S+)', m.group(1), re.MULTILINE)
+        status = status_match.group(1).strip('"\'') if status_match else 'unknown'
+        if status == 'pending':
+            unblocked.append(os.path.basename(path))
+
+if unblocked:
+    print(f"Tasks now unblocked by completing task {{TASK_ID}}: {', '.join(unblocked)}")
+else:
+    print("No pending tasks were waiting on task {{TASK_ID}}.")
+EOF
+```
+
+## Step 6 — Stop
 
 Emit this token as your **final output** and end your response immediately:
 
