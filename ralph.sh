@@ -308,7 +308,21 @@ determine_mode() {
     return
   fi
 
-  # 7. all tasks done → feature-pr or complete
+  # 7. pending tasks exist but all are blocked → wait
+  local blocked_pending_count
+  blocked_pending_count=$(sqlite3 "$DB_PATH" \
+    "SELECT COUNT(*) FROM tasks
+     WHERE status='pending'
+       AND blocked_by IS NOT NULL
+       AND blocked_by NOT IN (SELECT id FROM tasks WHERE status='done');" 2>/dev/null || echo "0")
+  if [[ "$blocked_pending_count" -gt 0 ]]; then
+    MODE="complete"
+    COMPLETE_REASON="blocked"
+    echo "  ⏸  All remaining tasks are blocked — waiting for dependencies to complete."
+    return
+  fi
+
+  # 8. all tasks done → feature-pr or complete
   local total_tasks done_tasks
   total_tasks=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM tasks;" 2>/dev/null || echo "0")
   done_tasks=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM tasks WHERE status='done';" 2>/dev/null || echo "0")
@@ -335,7 +349,7 @@ determine_mode() {
     return
   fi
 
-  # 8. Default fallback
+  # 9. Default fallback
   MODE="complete"
   echo "  ▶  Mode: $MODE  (no actionable tasks)"
 }
@@ -435,11 +449,20 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
   printf "\033k🤖 Ralph %s/%s\033\\" "$i" "$MAX_ITERATIONS"
 
   MODE=""
+  COMPLETE_REASON=""
   determine_mode
 
   # All done — no copilot needed
   if [[ "$MODE" == "complete" ]]; then
     echo ""
+    if [[ "$COMPLETE_REASON" == "blocked" ]]; then
+      printf "\033[1;33m"
+      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      echo "  ⏸  Ralph stopped — blocked tasks remain, no actionable work at iteration $i / $MAX_ITERATIONS"
+      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      printf "\033[0m"
+      exit 1
+    fi
     printf "\033[1;32m"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  ✅  Ralph completed all tasks at iteration $i / $MAX_ITERATIONS"

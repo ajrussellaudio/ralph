@@ -47,13 +47,25 @@ git branch -d "$TASK_BRANCH"
 sqlite3 {{DB_PATH}} "UPDATE tasks SET status='done' WHERE id={{TASK_ID}};"
 ```
 
-## Step 5 — Push feature branch
+## Step 5 — Log newly unblocked tasks
+
+After marking the task done, check for tasks that were blocked by it and are now unblocked:
+
+```bash
+UNBLOCKED=$(sqlite3 {{DB_PATH}} \
+  "SELECT id FROM tasks WHERE blocked_by={{TASK_ID}} AND status='pending';")
+for UNBLOCKED_ID in $UNBLOCKED; do
+  echo "  🔓 Task $UNBLOCKED_ID is now unblocked."
+done
+```
+
+## Step 6 — Push feature branch
 
 ```bash
 git push origin {{FEATURE_BRANCH}}
 ```
 
-## Step 6 — Stop
+## Step 7 — Stop
 
 Emit this token as your **final output** and end your response immediately:
 
