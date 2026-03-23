@@ -80,14 +80,14 @@ rest = content[fm_m.end():]
 
 # Parse existing | block scalar entries
 existing = []
-rn_match = re.search(r'(?m)^review_notes:(?:[^\n]*\n?)((?:[ \t]+[^\n]*\n?)*)', fm)
+rn_match = re.search(r'(?m)^review_notes:(?:[^\n]*\n?)((?:(?:  -|    )[^\n]*\n?)*)', fm)
 if rn_match:
     for em in re.finditer(r'[ \t]+-[ \t]+\|\n((?:(?:[ \t]{4}[^\n]*)?\n)*)', rn_match.group(0)):
         lines = [l[4:] if l.startswith('    ') else '' for l in em.group(1).splitlines()]
         existing.append('\n'.join(lines).rstrip())
 
 # Remove existing review_notes block
-fm = re.sub(r'(?m)^review_notes:(?:[^\n]*\n?)(?:[ \t]+[^\n]*\n?)*', '', fm)
+fm = re.sub(r'(?m)^review_notes:(?:[^\n]*\n?)(?:(?:  -|    )[^\n]*\n?)*', '', fm)
 
 # Append new entry
 existing.append(new_note.strip())
@@ -124,7 +124,7 @@ if not fm_m:
 fm = fm_m.group(1)
 
 notes = []
-rn_match = re.search(r'(?m)^review_notes:(?:[^\n]*\n?)((?:[ \t]+[^\n]*\n?)*)', fm)
+rn_match = re.search(r'(?m)^review_notes:(?:[^\n]*\n?)((?:(?:  -|    )[^\n]*\n?)*)', fm)
 if rn_match:
     for em in re.finditer(r'[ \t]+-[ \t]+\|\n((?:(?:[ \t]{4}[^\n]*)?\n)*)', rn_match.group(0)):
         lines = [l[4:] if l.startswith('    ') else '' for l in em.group(1).splitlines()]
@@ -152,7 +152,7 @@ if not fm_m:
 fm = fm_m.group(1)
 
 notes = []
-rn_match = re.search(r'(?m)^review_notes:(?:[^\n]*\n?)((?:[ \t]+[^\n]*\n?)*)', fm)
+rn_match = re.search(r'(?m)^review_notes:(?:[^\n]*\n?)((?:(?:  -|    )[^\n]*\n?)*)', fm)
 if rn_match:
     for em in re.finditer(r'[ \t]+-[ \t]+\|\n((?:(?:[ \t]{4}[^\n]*)?\n)*)', rn_match.group(0)):
         lines = [l[4:] if l.startswith('    ') else '' for l in em.group(1).splitlines()]
