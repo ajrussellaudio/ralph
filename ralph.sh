@@ -286,6 +286,7 @@ for f in files:
         'status': fm.get('status', 'pending'),
         'priority': fm.get('priority', 'normal'),
         'blocked_by': [int(x) for x in re.findall(r'\d+', fm.get('blocked_by', '[]'))],
+        'branch': fm.get('branch', ''),
     })
 
 if not tasks:
@@ -297,10 +298,13 @@ status_map = {int(t['id']): t['status'] for t in tasks}
 def deps_done(blocked_by):
     return all(status_map.get(dep) == 'done' for dep in blocked_by)
 
-# Priority 1: needs_review
+# Priority 1: needs_review — route to merge if a local branch is set, else to review
 for t in tasks:
     if t['status'] == 'needs_review':
-        print(f"review\t{t['file']}\t{t['id']}")
+        if t['branch']:
+            print(f"merge\t{t['file']}\t{t['id']}")
+        else:
+            print(f"review\t{t['file']}\t{t['id']}")
         sys.exit(0)
 
 # Priority 2: needs_review_2
