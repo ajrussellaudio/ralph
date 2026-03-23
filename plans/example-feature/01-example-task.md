@@ -7,7 +7,7 @@
 #   needs_fix      — reviewer found issues; Ralph will apply fixes
 #   needs_review_2 — fixes committed; waiting for a second review pass
 #   done           — task is complete; branch has been merged into the feature branch
-status: pending
+status: done
 
 # priority — optional. Controls which pending task Ralph picks first.
 # Allowed values:
