@@ -44,7 +44,7 @@ create_task_file() {
     printf 'fix_count: %s\n' "$fix_count"
     [[ -n "$branch" ]]       && printf 'branch: %s\n' "$branch"
     [[ -n "$blocked_by" ]]   && printf 'blocked_by: [%s]\n' "$blocked_by"
-    [[ -n "$review_notes" ]] && printf 'review_notes: "%s"\n' "$review_notes"
+    [[ -n "$review_notes" ]] && printf 'review_notes: "%s"\n' "$review_notes" || printf 'review_notes: []\n'
     printf -- '---\n\n'
     printf '# Task\n\nTask body.\n'
   } > "$file"

@@ -80,7 +80,7 @@ Then emit `<promise>STOP</promise>` as your **final output** and stop immediatel
 
 ## Step 6: Save review notes and set `status: needs_fix` (issues found path)
 
-Write the review notes into `{{TASK_FILE}}`'s YAML front matter and set `status: needs_fix`. Use the following Python script, replacing the `review_notes` string with the actual issues:
+Update `{{TASK_FILE}}`'s YAML front matter: set `status: needs_fix` and **append** a new `|` block scalar entry to the `review_notes` list. Use the following Python script, replacing the placeholder with the actual issues:
 
 ```bash
 python3 - <<'PYEOF'
@@ -100,12 +100,29 @@ rest = content[fm_m.end():]
 # Update status
 fm = re.sub(r'(?m)^(status:\s*)\S+', r'\g<1>needs_fix', fm)
 
-# Remove existing review_notes (inline or block scalar)
-fm = re.sub(r'(?m)^review_notes:[^\n]*(?:\n(?:  [^\n]*)?)*\n?', '', fm)
+# Parse existing | block scalar entries from review_notes
+existing = []
+rn_match = re.search(r'(?m)^review_notes:(?:[^\n]*\n?)((?:[ \t]+[^\n]*\n?)*)', fm)
+if rn_match:
+    for em in re.finditer(r'[ \t]+-[ \t]+\|\n((?:(?:[ \t]{4}[^\n]*)?\n)*)', rn_match.group(0)):
+        lines = [l[4:] if l.startswith('    ') else '' for l in em.group(1).splitlines()]
+        existing.append('\n'.join(lines).rstrip())
 
-# Append review_notes as a YAML block scalar
-review_notes = """<paste the numbered list of issues here>"""
-block = "review_notes: |\n" + "\n".join("  " + line for line in review_notes.strip().splitlines())
+# Remove existing review_notes block
+fm = re.sub(r'(?m)^review_notes:(?:[^\n]*\n?)(?:[ \t]+[^\n]*\n?)*', '', fm)
+
+# New review note — replace this placeholder with the actual issues found
+new_note = """<paste the numbered list of issues here>"""
+existing.append(new_note.strip())
+
+# Build YAML list of | block scalars
+entries_yaml = ''
+for note in existing:
+    entries_yaml += '  - |\n'
+    for line in note.splitlines():
+        entries_yaml += '    ' + line + '\n'
+
+block = 'review_notes:\n' + entries_yaml
 fm = fm.rstrip('\n') + '\n' + block + '\n'
 
 with open(path, 'w') as f:

@@ -90,3 +90,97 @@ teardown() {
   run set_front_matter_field "$TEST_FILE" "nonexistent_field" "value"
   [ "$status" -ne 0 ]
 }
+
+# ── review_notes: append_review_note / get_last_review_note / get_all_review_notes ──
+
+setup_review_notes_file() {
+  cat > "$TEST_FILE" <<'EOF'
+---
+status: needs_review
+branch: ralph/task-07
+fix_count: 0
+review_notes: []
+---
+
+# Task body
+
+Some content here.
+EOF
+}
+
+@test "get_last_review_note returns empty string when review_notes is []" {
+  setup_review_notes_file
+  result="$(get_last_review_note "$TEST_FILE")"
+  [ "$result" = "" ]
+}
+
+@test "append_review_note appends first entry to empty list" {
+  setup_review_notes_file
+  append_review_note "$TEST_FILE" "Missing null check on user input"
+  result="$(get_last_review_note "$TEST_FILE")"
+  [ "$result" = "Missing null check on user input" ]
+}
+
+@test "append_review_note appends second entry, get_last_review_note returns it" {
+  setup_review_notes_file
+  append_review_note "$TEST_FILE" "First issue: missing null check"
+  append_review_note "$TEST_FILE" "Second issue: wrong status code"
+  result="$(get_last_review_note "$TEST_FILE")"
+  [ "$result" = "Second issue: wrong status code" ]
+}
+
+@test "append_review_note preserves first entry after two rounds" {
+  setup_review_notes_file
+  append_review_note "$TEST_FILE" "First issue: missing null check"
+  append_review_note "$TEST_FILE" "Second issue: wrong status code"
+  result="$(get_all_review_notes "$TEST_FILE")"
+  echo "$result" | grep -q "First issue: missing null check"
+  echo "$result" | grep -q "Second issue: wrong status code"
+}
+
+@test "get_all_review_notes labels entries with [Review N]" {
+  setup_review_notes_file
+  append_review_note "$TEST_FILE" "Entry one"
+  append_review_note "$TEST_FILE" "Entry two"
+  result="$(get_all_review_notes "$TEST_FILE")"
+  echo "$result" | grep -q "\[Review 1\]"
+  echo "$result" | grep -q "\[Review 2\]"
+}
+
+@test "append_review_note handles colons in note text without YAML corruption" {
+  setup_review_notes_file
+  append_review_note "$TEST_FILE" "src/auth.ts line 42: token expiry missing — returns 403 instead of 401"
+  result="$(get_last_review_note "$TEST_FILE")"
+  [ "$result" = "src/auth.ts line 42: token expiry missing — returns 403 instead of 401" ]
+}
+
+@test "append_review_note handles multi-line notes" {
+  setup_review_notes_file
+  append_review_note "$TEST_FILE" "$(printf 'Line one\nLine two\nLine three')"
+  result="$(get_last_review_note "$TEST_FILE")"
+  echo "$result" | grep -q "Line one"
+  echo "$result" | grep -q "Line two"
+  echo "$result" | grep -q "Line three"
+}
+
+@test "append_review_note does not corrupt other front matter fields" {
+  setup_review_notes_file
+  append_review_note "$TEST_FILE" "Some review note"
+  [ "$(get_front_matter_field "$TEST_FILE" "status")"    = "needs_review" ]
+  [ "$(get_front_matter_field "$TEST_FILE" "branch")"    = "ralph/task-07" ]
+  [ "$(get_front_matter_field "$TEST_FILE" "fix_count")" = "0" ]
+}
+
+@test "append_review_note preserves task body" {
+  setup_review_notes_file
+  append_review_note "$TEST_FILE" "Some review note"
+  grep -q "Some content here." "$TEST_FILE"
+}
+
+@test "two review rounds produce two entries in review_notes" {
+  setup_review_notes_file
+  append_review_note "$TEST_FILE" "Round 1: missing check"
+  append_review_note "$TEST_FILE" "Round 2: fix incomplete"
+  count=$(grep -c '  - |' "$TEST_FILE")
+  [ "$count" -eq 2 ]
+}

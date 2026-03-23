@@ -4,7 +4,7 @@ Task `{{TASK_ID}}` in `{{TASK_FILE}}` has review notes that need addressing.
 
 ## Step 1 — Read the review notes and branch
 
-Read `review_notes` and `branch` from `{{TASK_FILE}}`'s YAML front matter:
+Read `review_notes` (last entry only) and `branch` from `{{TASK_FILE}}`'s YAML front matter:
 
 ```bash
 python3 - <<'EOF'
@@ -23,14 +23,16 @@ fm = fm_m.group(1)
 bm = re.search(r'(?m)^branch:\s*(\S+)', fm)
 print("branch:", bm.group(1) if bm else "")
 
-# Read review_notes (block scalar or inline)
-nm = re.search(r'(?m)^review_notes:\s*\|\n((?:(?:  [^\n]*)?\n)*)', fm)
-if nm:
-    notes = "\n".join(l[2:] if l.startswith("  ") else l for l in nm.group(1).splitlines())
-else:
-    nm = re.search(r'(?m)^review_notes:\s*(.+)$', fm)
-    notes = nm.group(1).strip() if nm else ""
-print("review_notes:", notes)
+# Read last entry from review_notes list (the actionable instruction)
+notes = []
+rn_match = re.search(r'(?m)^review_notes:(?:[^\n]*\n?)((?:[ \t]+[^\n]*\n?)*)', fm)
+if rn_match:
+    for em in re.finditer(r'[ \t]+-[ \t]+\|\n((?:(?:[ \t]{4}[^\n]*)?\n)*)', rn_match.group(0)):
+        lines = [l[4:] if l.startswith('    ') else '' for l in em.group(1).splitlines()]
+        notes.append('\n'.join(lines).rstrip())
+
+last_note = notes[-1] if notes else ""
+print("review_notes:", last_note)
 EOF
 ```
 
