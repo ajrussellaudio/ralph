@@ -59,30 +59,15 @@ Launch a **general-purpose sub-agent** with this prompt, substituting the real b
 > For each original issue, state: RESOLVED or UNRESOLVED (with a brief reason).
 > If all are RESOLVED, return exactly the word: LGTM"
 
-**If LGTM (all resolved):** proceed to steps 3–5 to merge and mark done.
+**If LGTM (all resolved):** proceed to steps 3–5 to set `status: approved`.
 
 **If any issues are UNRESOLVED:** proceed to step 6 to update review notes and set `status: needs_fix`.
 
 ---
 
-## Steps 3–5: Merge and mark done (LGTM path)
+## Steps 3–5: Approve (LGTM path)
 
-### Step 3 — Merge into feature branch
-
-```bash
-git checkout {{FEATURE_BRANCH}}
-git merge --no-ff <branch>
-```
-
-If the merge exits non-zero (conflicts), run `git merge --abort`, then emit `<promise>STOP</promise>` as your final output and stop immediately.
-
-### Step 4 — Delete the task branch
-
-```bash
-git branch -d <branch>
-```
-
-### Step 5 — Set `status: done` and commit
+### Step 3 — Set `status: approved` and commit
 
 ```bash
 python3 - <<'EOF'
@@ -90,12 +75,12 @@ import re
 path = "{{TASK_FILE}}"
 with open(path) as f:
     content = f.read()
-content = re.sub(r'(?m)^(status:\s*)\S+', r'\g<1>done', content, count=1)
+content = re.sub(r'(?m)^(status:\s*)\S+', r'\g<1>approved', content, count=1)
 with open(path, 'w') as f:
     f.write(content)
 EOF
 git add "{{TASK_FILE}}"
-git commit -m "chore: mark task {{TASK_ID}} done after round-2 review approval"
+git commit -m "chore: task {{TASK_ID}} approved after round-2 review — ready to merge"
 ```
 
 Then emit `<promise>STOP</promise>` as your **final output** and stop immediately.

@@ -235,7 +235,13 @@ for t in tasks:
         print(f"review\t{t['file']}\t{t['id']}")
         sys.exit(0)
 
-# Priority 2: needs_review_2 — force-approve if fix_count >= 2, else review-round2
+# Priority 2: approved — route to merge
+for t in tasks:
+    if t['status'] == 'approved':
+        print(f"merge\t{t['file']}\t{t['id']}")
+        sys.exit(0)
+
+# Priority 3: needs_review_2 — force-approve if fix_count >= 2, else review-round2
 for t in tasks:
     if t['status'] == 'needs_review_2':
         if t['fix_count'] >= 2:
@@ -244,7 +250,7 @@ for t in tasks:
             print(f"review-round2\t{t['file']}\t{t['id']}")
         sys.exit(0)
 
-# Priority 3: needs_fix — force-approve if fix_count >= 2, else fix
+# Priority 4: needs_fix — force-approve if fix_count >= 2, else fix
 for t in tasks:
     if t['status'] == 'needs_fix':
         if t['fix_count'] >= 2:
@@ -253,13 +259,13 @@ for t in tasks:
             print(f"fix\t{t['file']}\t{t['id']}")
         sys.exit(0)
 
-# Priority 4: in_progress (resume interrupted work)
+# Priority 5: in_progress (resume interrupted work)
 for t in tasks:
     if t['status'] == 'in_progress':
         print(f"fix\t{t['file']}\t{t['id']}")
         sys.exit(0)
 
-# Priority 5: pending with all blocked_by deps done (high priority first)
+# Priority 6: pending with all blocked_by deps done (high priority first)
 ready = [t for t in tasks if t['status'] == 'pending' and deps_done(t['blocked_by'])]
 high = [t for t in ready if t['priority'] == 'high']
 if high:

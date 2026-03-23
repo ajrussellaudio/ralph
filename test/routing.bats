@@ -87,6 +87,29 @@ teardown() {
   [ "$TASK_ID" = "01" ]
 }
 
+@test "approved task → merge" {
+  create_task_file "$PLANS_DIR" "01-task.md" "status=approved"
+  determine_mode
+  [ "$MODE"    = "merge" ]
+  [ "$TASK_ID" = "01" ]
+}
+
+@test "approved task takes priority over needs_review_2" {
+  create_task_file "$PLANS_DIR" "01-task.md" "status=approved"
+  create_task_file "$PLANS_DIR" "02-task.md" "status=needs_review_2"
+  determine_mode
+  [ "$MODE"    = "merge" ]
+  [ "$TASK_ID" = "01" ]
+}
+
+@test "needs_review takes priority over approved" {
+  create_task_file "$PLANS_DIR" "01-task.md" "status=needs_review"
+  create_task_file "$PLANS_DIR" "02-task.md" "status=approved"
+  determine_mode
+  [ "$MODE"    = "review" ]
+  [ "$TASK_ID" = "01" ]
+}
+
 # ── Routing: all-done cases ───────────────────────────────────────────────────
 
 @test "all tasks done, no feature label → complete" {
