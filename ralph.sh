@@ -239,7 +239,7 @@ PYEOF
 # ── Routing ────────────────────────────────────────────────────────────────────
 
 # Populates MODE, TASK_FILE, TASK_ID based on YAML front matter in task files.
-# MODE is one of: implement | review | review-round2 | fix | feature-pr | complete
+# MODE is one of: implement | review | review-round2 | fix | force-approve | feature-pr | complete
 determine_mode() {
   PR_NUMBER=""
   ISSUE_NUMBER=""
@@ -287,6 +287,7 @@ for f in files:
         'priority': fm.get('priority', 'normal'),
         'blocked_by': [int(x) for x in re.findall(r'\d+', fm.get('blocked_by', '[]'))],
         'branch': fm.get('branch', ''),
+        'fix_count': int(fm.get('fix_count', '0') or '0'),
     })
 
 if not tasks:
@@ -298,25 +299,28 @@ status_map = {int(t['id']): t['status'] for t in tasks}
 def deps_done(blocked_by):
     return all(status_map.get(dep) == 'done' for dep in blocked_by)
 
-# Priority 1: needs_review — route to merge if a local branch is set, else to review
+# Priority 1: needs_review — always route to review (branch read from front matter)
 for t in tasks:
     if t['status'] == 'needs_review':
-        if t['branch']:
-            print(f"merge\t{t['file']}\t{t['id']}")
-        else:
-            print(f"review\t{t['file']}\t{t['id']}")
+        print(f"review\t{t['file']}\t{t['id']}")
         sys.exit(0)
 
-# Priority 2: needs_review_2
+# Priority 2: needs_review_2 — force-approve if fix_count >= 2, else review-round2
 for t in tasks:
     if t['status'] == 'needs_review_2':
-        print(f"review-round2\t{t['file']}\t{t['id']}")
+        if t['fix_count'] >= 2:
+            print(f"force-approve\t{t['file']}\t{t['id']}")
+        else:
+            print(f"review-round2\t{t['file']}\t{t['id']}")
         sys.exit(0)
 
-# Priority 3: needs_fix
+# Priority 3: needs_fix — force-approve if fix_count >= 2, else fix
 for t in tasks:
     if t['status'] == 'needs_fix':
-        print(f"fix\t{t['file']}\t{t['id']}")
+        if t['fix_count'] >= 2:
+            print(f"force-approve\t{t['file']}\t{t['id']}")
+        else:
+            print(f"fix\t{t['file']}\t{t['id']}")
         sys.exit(0)
 
 # Priority 4: in_progress (resume interrupted work)

@@ -7,6 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `review.md` (markdown-backend): reads branch from task file front matter, diffs local task branch against feature branch via sub-agent, writes `review_notes` as a YAML block scalar and sets `status: needs_fix` on issues, or performs local merge and sets `status: done` on approval — no GitHub PR comments (#39)
+- `review-round2.md` (markdown-backend): same as `review.md` but also reads prior `review_notes` from front matter as context for the verification sub-agent (#39)
+- `fix.md` (markdown-backend): reads `review_notes` and `branch` from task file front matter, checks out the task branch, applies fixes, increments `fix_count`, and sets `status: needs_review_2` (#39)
+- `force-approve.md` (markdown-backend): reads branch from task file front matter, performs local merge into feature branch, and sets `status: done` — triggered when `fix_count >= 2` (#39)
+
+### Changed
+- Routing in `determine_mode()`: `status: needs_review` now always routes to `review` mode (branch is read from front matter by the mode itself); previously routed to `merge` when `branch` was set (#39)
+- Routing in `determine_mode()`: `status: needs_review_2` routes to `force-approve` when `fix_count >= 2`, otherwise to `review-round2`; `status: needs_fix` routes to `force-approve` when `fix_count >= 2`, otherwise to `fix` (#39)
+- `fix_count` field from task file front matter is now parsed in the routing script to drive the force-approve escalation (#39)
+
+### Added
 - `implement.md` (markdown-backend): reads task body from `{{TASK_FILE}}` and PRD context from `{{PRD_OVERVIEW}}`, creates a local `ralph/task-{{TASK_ID}}` branch (never pushed to remote), sets `status: in_progress` before starting and `status: needs_review` + `branch: ralph/task-{{TASK_ID}}` after committing (#38)
 - `merge.md` (markdown-backend): reads the task branch from the task file's YAML front matter, performs a local `git merge --no-ff`, deletes the task branch, and sets `status: done` in the task file (#38)
 - Routing in `determine_mode()`: `status: needs_review` with a `branch` field set now routes to `merge` mode (local branch); without a `branch` field it continues to route to `review` mode (PR-based) (#38)
