@@ -15,6 +15,7 @@
 determine_mode() {
   TASK_ID=""
   PR_NUMBER=""  # kept for compatibility with review.md / fix.md (always empty now)
+  COMPLETE_REASON=""
 
   if [[ -z "${RALPH_SKIP_SYNC:-}" ]]; then
     echo "  🔄 Syncing workspace…"

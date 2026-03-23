@@ -69,8 +69,14 @@ cur.execute("INSERT OR REPLACE INTO prd (label, overview) VALUES (?, ?)", (label
 
 for (task_num, title, body_text, priority, blocked_by) in tasks:
     cur.execute(
-        "INSERT OR REPLACE INTO tasks (id, title, body, priority, status, blocked_by) VALUES (?, ?, ?, ?, 'pending', ?)",
+        "INSERT OR IGNORE INTO tasks (id, title, body, priority, status, blocked_by) VALUES (?, ?, ?, ?, 'pending', ?)",
         (task_num, title, body_text, priority, blocked_by)
+    )
+    cur.execute(
+        """UPDATE tasks
+           SET title = ?, body = ?, priority = ?, blocked_by = ?
+           WHERE id = ? AND status = 'pending'""",
+        (title, body_text, priority, blocked_by, task_num)
     )
 
 con.commit()

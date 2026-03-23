@@ -66,6 +66,24 @@ teardown() {
   [ "$TASK_ID" = "1" ]
 }
 
+@test "approved task → merge" {
+  insert_task "$TEST_DB" 1 "approved"
+
+  determine_mode
+
+  [ "$MODE"    = "merge" ]
+  [ "$TASK_ID" = "1" ]
+}
+
+@test "in_progress task → fix (resume)" {
+  insert_task "$TEST_DB" 1 "in_progress"
+
+  determine_mode
+
+  [ "$MODE"    = "fix" ]
+  [ "$TASK_ID" = "1" ]
+}
+
 @test "needs_review_2 task → review-round2" {
   insert_task "$TEST_DB" 1 "needs_review_2"
 
