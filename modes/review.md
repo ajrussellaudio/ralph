@@ -28,6 +28,7 @@ Launch a **general-purpose sub-agent** with this prompt, substituting the real b
 > "Review the code changes for task {{TASK_ID}} in the `{{REPO}}` repository.
 > Run: `git diff {{FEATURE_BRANCH}}...<branch>` to get the diff.
 > Read the task spec at `{{TASK_FILE}}` to understand what was implemented.
+> Run the test suite: `{{TEST_CMD}}`
 > You are a strict code reviewer with no attachment to this code.
 > Surface only: genuine bugs, logic errors, missing test coverage for new behaviour, or security issues.
 > Do NOT comment on: style, formatting, naming conventions, or speculative concerns.
@@ -100,7 +101,7 @@ rest = content[fm_m.end():]
 fm = re.sub(r'(?m)^(status:\s*)\S+', r'\g<1>needs_fix', fm)
 
 # Remove existing review_notes (inline or block scalar)
-fm = re.sub(r'(?m)^review_notes:[^\n]*(?:\n  [^\n]*)*\n?', '', fm)
+fm = re.sub(r'(?m)^review_notes:[^\n]*(?:\n(?:  [^\n]*)?)*\n?', '', fm)
 
 # Append review_notes as a YAML block scalar
 review_notes = """<paste the numbered list of issues here>"""

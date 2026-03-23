@@ -24,7 +24,7 @@ bm = re.search(r'(?m)^branch:\s*(\S+)', fm)
 print("branch:", bm.group(1) if bm else "")
 
 # Read review_notes (block scalar or inline)
-nm = re.search(r'(?m)^review_notes:\s*\|\n((?:  [^\n]*\n?)*)', fm)
+nm = re.search(r'(?m)^review_notes:\s*\|\n((?:(?:  [^\n]*)?\n)*)', fm)
 if nm:
     notes = "\n".join(l[2:] if l.startswith("  ") else l for l in nm.group(1).splitlines())
 else:

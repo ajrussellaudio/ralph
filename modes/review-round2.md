@@ -24,7 +24,7 @@ bm = re.search(r'(?m)^branch:\s*(\S+)', fm)
 print("branch:", bm.group(1) if bm else "")
 
 # Read review_notes (block scalar or inline)
-nm = re.search(r'(?m)^review_notes:\s*\|\n((?:  [^\n]*\n?)*)', fm)
+nm = re.search(r'(?m)^review_notes:\s*\|\n((?:(?:  [^\n]*)?\n)*)', fm)
 if nm:
     notes = "\n".join(l[2:] if l.startswith("  ") else l for l in nm.group(1).splitlines())
 else:
@@ -117,7 +117,7 @@ rest = content[fm_m.end():]
 fm = re.sub(r'(?m)^(status:\s*)\S+', r'\g<1>needs_fix', fm)
 
 # Remove existing review_notes (inline or block scalar)
-fm = re.sub(r'(?m)^review_notes:[^\n]*(?:\n  [^\n]*)*\n?', '', fm)
+fm = re.sub(r'(?m)^review_notes:[^\n]*(?:\n(?:  [^\n]*)?)*\n?', '', fm)
 
 # Append updated review_notes as a YAML block scalar
 review_notes = """<paste the unresolved issues here>"""
