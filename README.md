@@ -144,7 +144,7 @@ To override Ralph's prompts for a specific project, create a `ralph/modes/` dire
 ## Stopping Ralph
 
 Ralph stops automatically when:
-- All tasks are done and any feature→main PR is open (emits `COMPLETE`)
+- All tasks are done and the feature→main PR has been opened (emits `COMPLETE` — merging is left to a human)
 - All remaining tasks are blocked with no actionable work
 - The maximum iteration count is reached
 
