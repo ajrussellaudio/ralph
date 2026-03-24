@@ -103,8 +103,6 @@ if [[ $# -eq 2 ]]; then
   fi
 fi
 
-# Source path for preflight validation — always the main checkout.
-PLANS_DIR_SRC="${GIT_ROOT}/plans/${RAW_LABEL}"
 # Runtime path handed to Copilot — set to the worktree after it is created.
 PLANS_DIR=""
 
@@ -137,19 +135,8 @@ if [[ -z "$TEST_CMD" ]]; then
   exit 1
 fi
 
-# In label mode, validate that the plans directory exists and contains task files.
-if [[ -n "$RAW_LABEL" ]]; then
-  if [[ ! -d "$PLANS_DIR_SRC" ]]; then
-    echo "Error: Plans directory not found at ${PLANS_DIR_SRC}"
-    echo "Create it and add at least one task file (e.g. 01-first-task.md)."
-    exit 1
-  fi
-  if ! ls "${PLANS_DIR_SRC}"/*.md &>/dev/null; then
-    echo "Error: No .md task files found in ${PLANS_DIR_SRC}"
-    echo "Add at least one task file (e.g. 01-first-task.md)."
-    exit 1
-  fi
-fi
+# Plans directory validation is deferred until after the worktree is created,
+# so we can check the feature branch (where plans/ may live) instead of main.
 
 # ── Worktree setup ─────────────────────────────────────────────────────────────
 
@@ -183,6 +170,8 @@ if [[ "$FEATURE_BRANCH" != "main" ]]; then
     git -C "$GIT_ROOT" fetch origin main > /dev/null
     git -C "$GIT_ROOT" push origin "origin/main:refs/heads/${FEATURE_BRANCH}"
     echo "  ✅  Branch ${FEATURE_BRANCH} created on origin."
+  else
+    git -C "$GIT_ROOT" fetch origin "$FEATURE_BRANCH" > /dev/null
   fi
 fi
 
@@ -191,6 +180,20 @@ git -C "$GIT_ROOT" worktree add --detach "$WORKTREE_DIR" "origin/$FEATURE_BRANCH
 # Now that the worktree exists, point PLANS_DIR inside it so Copilot mutates
 # task files within the worktree and those changes are included in git commits.
 PLANS_DIR="${WORKTREE_DIR}/plans/${RAW_LABEL}"
+
+# Validate plans directory on the feature branch (where plans/ may live).
+if [[ -n "$RAW_LABEL" ]]; then
+  if [[ ! -d "$PLANS_DIR" ]]; then
+    echo "  ❌  Plans directory not found at plans/${RAW_LABEL} on branch ${FEATURE_BRANCH}"
+    echo "  Create it and add at least one task file (e.g. 01-first-task.md)."
+    exit 1
+  fi
+  if ! ls "${PLANS_DIR}"/*.md &>/dev/null; then
+    echo "  ❌  No .md task files found in plans/${RAW_LABEL} on branch ${FEATURE_BRANCH}"
+    echo "  Add at least one task file (e.g. 01-first-task.md)."
+    exit 1
+  fi
+fi
 
 # ── Library ──────────────────────────────────────────────────────────────────
 
