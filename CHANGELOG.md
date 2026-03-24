@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- `PLANS_DIR` now resolves to a path inside `$WORKTREE_DIR` instead of `$GIT_ROOT`; front matter status changes and `review_notes` written by Copilot are included in git commits (#53)
+- Preflight existence check for `plans/<label>/` still validates against `$GIT_ROOT` (before the worktree is created) via a separate `PLANS_DIR_SRC` variable (#53)
+
 ### Changed
 - `review.md`: LGTM path now sets `status: approved` and commits instead of immediately merging; merge is deferred to `merge` mode (#51)
 - `review-round2.md`: LGTM path now sets `status: approved` and commits instead of immediately merging; merge is deferred to `merge` mode (#51)
