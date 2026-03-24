@@ -118,6 +118,18 @@ EOF
   [ "${#lines[@]}" -eq 1 ]
 }
 
+@test "commented-out array line is not matched" {
+  CONFIG_FILE="$TEST_DIR/test.toml"
+  cat > "$CONFIG_FILE" <<'EOF'
+# pre_commit = ["dont_match"]
+pre_commit = ["match"]
+EOF
+  run toml_get_array pre_commit
+  [ "$status" -eq 0 ]
+  [ "$output" = "match" ]
+  [ "${#lines[@]}" -eq 1 ]
+}
+
 @test "CONFIG_FILE unset returns empty output" {
   CONFIG_FILE=""
   run toml_get_array pre_commit

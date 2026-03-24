@@ -15,6 +15,7 @@
 # Usage: toml_get_array <key>
 # Requires the global $CONFIG_FILE variable to be set.
 # Returns 0 always; empty output for missing keys or empty arrays.
+# Limitation: does not support TOML escape sequences (e.g., \") inside values.
 toml_get_array() {
   local key="$1"
   [[ -n "$CONFIG_FILE" && -f "$CONFIG_FILE" ]] || return 0
