@@ -32,7 +32,7 @@ git merge --squash <branch-from-step-1>
 If the merge exits non-zero (conflicts), run:
 
 ```bash
-git merge --abort
+git reset --hard HEAD
 ```
 
 Then emit `<promise>STOP</promise>` as your final output and stop immediately.
@@ -48,7 +48,7 @@ git commit -m "feat: complete task {{TASK_ID}}"
 Remove the task branch locally. Do **not** push anything — the remote must have no `ralph/task-*` branches:
 
 ```bash
-git branch -d <branch-from-step-1>
+git branch -D <branch-from-step-1>
 ```
 
 ## Step 4 — Set `status: done` and commit
