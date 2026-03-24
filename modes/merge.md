@@ -20,13 +20,13 @@ EOF
 
 Record the branch name (e.g. `ralph/task-{{TASK_ID}}`).
 
-## Step 2 — Merge into feature branch
+## Step 2 — Squash merge into feature branch
 
-Ensure you are on the feature branch, then merge the task branch with `--no-ff`:
+Ensure you are on the feature branch, then squash-merge the task branch:
 
 ```bash
 git checkout {{FEATURE_BRANCH}}
-git merge --no-ff <branch-from-step-1>
+git merge --squash <branch-from-step-1>
 ```
 
 If the merge exits non-zero (conflicts), run:
@@ -36,6 +36,12 @@ git merge --abort
 ```
 
 Then emit `<promise>STOP</promise>` as your final output and stop immediately.
+
+Once the squash succeeds, commit the staged changes to produce a single commit on the feature branch:
+
+```bash
+git commit -m "feat: complete task {{TASK_ID}}"
+```
 
 ## Step 3 — Delete the task branch
 
