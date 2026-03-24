@@ -686,10 +686,8 @@ handle_review() {
 
   # Review has comments — enter fix mode.
   (( fix_count++ )) || true
-  echo ""
-  echo "  ⚠️  Review has ${comment_count} comment(s). Entering fix mode (iteration ${fix_count}/${MAX_FIX_COUNT}) …"
 
-  # Check threshold before attempting fix.
+  # Check threshold before announcing fix mode.
   if (( fix_count > MAX_FIX_COUNT )); then
     echo ""
     echo "  ❌  Fix count (${fix_count}) exceeds threshold (${MAX_FIX_COUNT})."
@@ -704,6 +702,9 @@ handle_review() {
     echo "  ──────────────────────────────────────────"
     return 1
   fi
+
+  echo ""
+  echo "  ⚠️  Review has ${comment_count} comment(s). Entering fix mode (iteration ${fix_count}/${MAX_FIX_COUNT}) …"
 
   # Build and run the fix prompt.
   build_fix_prompt "$PR_NUMBER"
