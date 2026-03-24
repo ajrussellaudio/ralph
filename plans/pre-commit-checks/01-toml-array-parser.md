@@ -2,7 +2,7 @@
 title: TOML array parser + tests
 priority: normal
 blocked_by: []
-status: pending
+status: in_progress
 branch: ""
 review_notes: ""
 fix_count: 0
