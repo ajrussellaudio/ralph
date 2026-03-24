@@ -184,3 +184,62 @@ EOF
   count=$(grep -c '  - |' "$TEST_FILE")
   [ "$count" -eq 2 ]
 }
+
+# ── get_front_matter_field: block scalar review_notes ────────────────────────
+
+setup_block_scalar_notes_file() {
+  cat > "$TEST_FILE" <<'EOF'
+---
+status: needs_review
+priority: high
+fix_count: 1
+branch: ralph/task-07
+review_notes:
+  - |
+    Looks good overall
+---
+
+# Task body
+
+Some content here.
+EOF
+}
+
+@test "get_front_matter_field returns empty string for block scalar review_notes list" {
+  setup_block_scalar_notes_file
+  result="$(get_front_matter_field "$TEST_FILE" "review_notes")"
+  [ "$result" = "" ]
+}
+
+@test "get_front_matter_field reads other fields correctly when review_notes is a block scalar" {
+  setup_block_scalar_notes_file
+  [ "$(get_front_matter_field "$TEST_FILE" "status")"    = "needs_review" ]
+  [ "$(get_front_matter_field "$TEST_FILE" "priority")"  = "high" ]
+  [ "$(get_front_matter_field "$TEST_FILE" "fix_count")" = "1" ]
+  [ "$(get_front_matter_field "$TEST_FILE" "branch")"    = "ralph/task-07" ]
+}
+
+@test "get_front_matter_field reads other fields when review_notes block scalar contains colons" {
+  setup_review_notes_file
+  append_review_note "$TEST_FILE" "src/auth.ts line 42: missing null check — returns 403 instead of 401"
+  [ "$(get_front_matter_field "$TEST_FILE" "status")"    = "needs_review" ]
+  [ "$(get_front_matter_field "$TEST_FILE" "branch")"    = "ralph/task-07" ]
+  [ "$(get_front_matter_field "$TEST_FILE" "fix_count")" = "0" ]
+}
+
+@test "get_front_matter_field reads other fields when review_notes is a multiline block scalar" {
+  setup_review_notes_file
+  append_review_note "$TEST_FILE" "$(printf 'Line one: first issue\nLine two: second issue\nLine three: third issue')"
+  [ "$(get_front_matter_field "$TEST_FILE" "status")"    = "needs_review" ]
+  [ "$(get_front_matter_field "$TEST_FILE" "branch")"    = "ralph/task-07" ]
+  [ "$(get_front_matter_field "$TEST_FILE" "fix_count")" = "0" ]
+}
+
+@test "appending block scalar entries with colons does not corrupt other front matter fields" {
+  setup_review_notes_file
+  append_review_note "$TEST_FILE" "src/auth.ts line 42: token expiry missing"
+  append_review_note "$TEST_FILE" "api/routes.ts line 15: missing error handler"
+  [ "$(get_front_matter_field "$TEST_FILE" "status")"    = "needs_review" ]
+  [ "$(get_front_matter_field "$TEST_FILE" "branch")"    = "ralph/task-07" ]
+  [ "$(get_front_matter_field "$TEST_FILE" "fix_count")" = "0" ]
+}
