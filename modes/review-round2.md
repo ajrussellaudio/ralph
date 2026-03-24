@@ -19,9 +19,11 @@ Launch a **general-purpose sub-agent** with this prompt:
 > Run the test suite: `{{TEST_CMD}}`
 > The previous review raised these specific issues:
 > <paste the full body of the round 1 REQUEST_CHANGES comment here>
-> Check only whether each of those issues has been resolved in the latest diff.
+> Also read any `<!-- RALPH-FIX: RESPONSE -->` comment — the fix agent may have tagged issues as FIXED or DISPUTED.
+> For each original issue, assess its resolution:
+> - **FIXED** issues: verify the fix is present and correct in the latest diff. State: RESOLVED or UNRESOLVED (with reason).
+> - **DISPUTED** issues: evaluate whether the rebuttal is convincing — does the evidence hold up? A well-reasoned dispute with concrete evidence (e.g. citing an existing test, an upstream guard, or why the scenario is impossible) counts as a valid resolution. State: RESOLVED (dispute accepted) or UNRESOLVED (dispute rejected, with reason).
 > Do NOT raise new issues — only assess the original ones.
-> For each original issue, state: RESOLVED or UNRESOLVED (with a brief reason).
 > If all are RESOLVED, return exactly the word: LGTM"
 
 **If LGTM (all resolved):** post an APPROVED comment (see below), then emit the following token as your **final output** and end your response immediately:
