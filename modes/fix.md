@@ -44,22 +44,39 @@ Read **every** issue listed — you must address all of them in one pass.
 git checkout <branch-from-step-1>
 ```
 
-## Step 3 — Fix
+## Step 3 — Investigate and address each issue
 
-Implement fixes for every raised issue. Delegate large file reads to sub-agents.
+Go through each review issue **one by one**. For each issue, investigate whether it is a genuine problem in the code:
 
-Run `{{TEST_CMD}}` using a sub-agent. Fix any test failures before continuing.
+- **If the issue is real:** fix it.
+- **If the issue does not exist** (hallucinated, stale, or not applicable): do NOT make speculative changes. Instead, prepare a DISPUTED rebuttal with concrete evidence (e.g. cite the line that already handles it, the test that already covers it, or why the scenario is impossible).
 
-## Step 4 — Commit the fixes
+After addressing all issues, build a **structured review note** tagging each issue as FIXED or DISPUTED:
+
+```
+Issue 1: "<original issue summary>" — FIXED: <brief description of what you changed>
+Issue 2: "<original issue summary>" — DISPUTED: <concrete evidence why this is not an issue>
+Issue 3: "<original issue summary>" — FIXED: <brief description of what you changed>
+```
+
+If you made any code changes, run `{{TEST_CMD}}` using a sub-agent. Fix any test failures before continuing.
+
+## Step 4 — Commit the fixes and append review note
+
+If you made code changes:
 
 ```bash
 git add -A
 git commit -m "fix: address review notes for task {{TASK_ID}}"
 ```
 
-## Step 5 — Update front matter: increment `fix_count`, set `status: needs_review_2`
+If all issues were DISPUTED (no code changes), skip the commit above.
 
-Switch back to the feature branch and update `{{TASK_FILE}}`'s front matter:
+Now append your structured FIXED/DISPUTED review note to `{{TASK_FILE}}`'s `review_notes` using the Python script in Step 5.
+
+## Step 5 — Update front matter: append review note, increment `fix_count`, set `status: needs_review_2`
+
+Switch back to the feature branch, append the FIXED/DISPUTED review note, and update `{{TASK_FILE}}`'s front matter:
 
 ```bash
 git checkout {{FEATURE_BRANCH}}
@@ -70,7 +87,7 @@ path = "{{TASK_FILE}}"
 with open(path) as f:
     content = f.read()
 
-fm_m = re.match(r'^---\n(.*?)\n---\n', content, re.DOTALL)
+fm_m = re.match(r'^---\n(.*?)\n?---\n', content, re.DOTALL)
 if not fm_m:
     sys.exit("No front matter found")
 
@@ -88,8 +105,33 @@ if fc_m:
 else:
     fm = fm.rstrip('\n') + '\nfix_count: 1\n'
 
+# Parse existing | block scalar entries from review_notes
+existing = []
+rn_match = re.search(r'(?m)^review_notes:(?:[^\n]*\n?)((?:(?:  -|    )[^\n]*\n?)*)', fm)
+if rn_match:
+    for em in re.finditer(r'[ \t]+-[ \t]+\|\n((?:(?:[ \t]{4}[^\n]*)?\n)*)', rn_match.group(0)):
+        lines = [l[4:] if l.startswith('    ') else '' for l in em.group(1).splitlines()]
+        existing.append('\n'.join(lines).rstrip())
+
+# Remove existing review_notes block
+fm = re.sub(r'(?m)^review_notes:(?:[^\n]*\n?)(?:(?:  -|    )[^\n]*\n?)*', '', fm)
+
+# New review note — replace this placeholder with the actual FIXED/DISPUTED note from Step 3
+new_note = """<paste the structured FIXED/DISPUTED review note here>"""
+existing.append(new_note.strip())
+
+# Build YAML list of | block scalars
+entries_yaml = ''
+for note in existing:
+    entries_yaml += '  - |\n'
+    for line in note.splitlines():
+        entries_yaml += '    ' + line + '\n'
+
+block = 'review_notes:\n' + entries_yaml
+fm = fm.rstrip('\n') + '\n' + block + '\n'
+
 with open(path, 'w') as f:
-    f.write(f"---\n{fm}---\n{rest}")
+    f.write(f"---\n{fm}\n---\n{rest}")
 PYEOF
 git add "{{TASK_FILE}}"
 git commit -m "chore: task {{TASK_ID}} needs_review_2 after fix (fix_count incremented)"

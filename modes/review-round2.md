@@ -52,11 +52,12 @@ Launch a **general-purpose sub-agent** with this prompt, substituting the real b
 
 > "You are verifying fixes on task {{TASK_ID}} in the `{{REPO}}` repository.
 > Get the diff with: `git diff {{FEATURE_BRANCH}}...<branch>`
-> The previous review raised these specific issues:
+> The previous review raised these specific issues, and the fix agent responded with FIXED/DISPUTED tags:
 > <paste prior review_notes here>
-> Check only whether each of those issues has been resolved in the latest diff.
+> For each original issue, assess its resolution:
+> - **FIXED** issues: verify the fix is present and correct in the latest diff. State: RESOLVED or UNRESOLVED (with reason).
+> - **DISPUTED** issues: evaluate whether the rebuttal is convincing — does the evidence hold up? A well-reasoned dispute with concrete evidence (e.g. citing an existing test, an upstream guard, or why the scenario is impossible) counts as a valid resolution. State: RESOLVED (dispute accepted) or UNRESOLVED (dispute rejected, with reason).
 > Do NOT raise new issues — only assess the original ones.
-> For each original issue, state: RESOLVED or UNRESOLVED (with a brief reason).
 > If all are RESOLVED, return exactly the word: LGTM"
 
 **If LGTM (all resolved):** proceed to steps 3–5 to set `status: approved`.
