@@ -19,7 +19,7 @@ import sys, re
 file_path, field = sys.argv[1], sys.argv[2]
 with open(file_path) as f:
     content = f.read()
-m = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
+m = re.match(r'^---\n(.*?)\n?---', content, re.DOTALL)
 if not m:
     sys.exit(0)
 for line in m.group(1).splitlines():
@@ -40,7 +40,7 @@ import sys, re
 file_path, field, value = sys.argv[1], sys.argv[2], sys.argv[3]
 with open(file_path) as f:
     content = f.read()
-m = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
+m = re.match(r'^---\n(.*?)\n?---', content, re.DOTALL)
 if not m:
     sys.exit(1)
 fm = m.group(1)
@@ -193,7 +193,7 @@ plans_dir = sys.argv[1]
 def parse_front_matter(path):
     with open(path) as f:
         content = f.read()
-    m = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
+    m = re.match(r'^---\n(.*?)\n?---', content, re.DOTALL)
     if not m:
         return {}
     fm = {}
