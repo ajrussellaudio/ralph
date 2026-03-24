@@ -21,7 +21,8 @@
 #  11. Request a Copilot review on the PR
 #  12. Poll for the review every 60 s (up to 20 min; re-request once on timeout)
 #  13. On approval: merge PR, set status to "Done", sync worktree
-#  14. On comments: stop with message (fix loop not yet implemented)
+#  14. On comments: enter fix mode — run Copilot fix, re-request review, loop
+#  15. Fix loop continues until "no new comments" (merge) or threshold breach
 
 set -euo pipefail
 
@@ -465,6 +466,25 @@ build_prompt() {
   rm -f "$task_desc_file"
 }
 
+# ── Build fix prompt ───────────────────────────────────────────────────────────
+
+build_fix_prompt() {
+  local pr="$1"
+  local mode_file="$MODES_DIR/fix-ext.md"
+  if [[ ! -f "$mode_file" ]]; then
+    echo "  ❌  Mode file not found: $mode_file"
+    exit 1
+  fi
+
+  PROMPT=$(cat "$mode_file")
+  PROMPT="${PROMPT//\{\{REPO\}\}/$REPO}"
+  PROMPT="${PROMPT//\{\{OWNER\}\}/$OWNER}"
+  PROMPT="${PROMPT//\{\{REPO_NAME\}\}/$REPO_NAME}"
+  PROMPT="${PROMPT//\{\{PR_NUMBER\}\}/$pr}"
+  PROMPT="${PROMPT//\{\{BUILD_CMD\}\}/$BUILD_CMD}"
+  PROMPT="${PROMPT//\{\{TEST_CMD\}\}/$TEST_CMD}"
+}
+
 # ── Run implement ──────────────────────────────────────────────────────────────
 
 echo ""
@@ -603,67 +623,135 @@ else
   fi
 fi
 
-# ── Parse the review result ──────────────────────────────────────────────────
+# ── Parse the review result and fix loop ─────────────────────────────────────
 
-REVIEW_BODY=$(echo "$REVIEW_JSON" | jq -r '.body // ""')
+MAX_FIX_COUNT=5
+fix_count=0
 
-if echo "$REVIEW_BODY" | grep -qi "no new comments"; then
-  echo "  ✅  Review passed — no new comments."
+handle_review() {
+  local review_json="$1"
+  local review_body
+  review_body=$(echo "$review_json" | jq -r '.body // ""')
 
-  # Merge the PR.
-  echo "  🔀 Merging PR #${PR_NUMBER} …"
-  gh pr merge "$PR_NUMBER" --repo "$REPO" --merge < /dev/null
+  if echo "$review_body" | grep -qi "no new comments"; then
+    echo "  ✅  Review passed — no new comments."
 
-  # Update project item status to "Done".
-  echo "  📋 Setting task status to 'Done' …"
-  project_set_status "$PROJECT_ID" "$ITEM_ID" "Done"
+    # Merge the PR.
+    echo "  🔀 Merging PR #${PR_NUMBER} …"
+    gh pr merge "$PR_NUMBER" --repo "$REPO" --merge < /dev/null
 
-  # Sync the worktree to the updated feature branch tip.
-  echo "  🔄 Syncing worktree to ${FEATURE_BRANCH} …"
-  git -C "$WORKTREE_DIR" fetch origin "$FEATURE_BRANCH" --quiet
-  git -C "$WORKTREE_DIR" checkout --detach "origin/${FEATURE_BRANCH}" --quiet 2>/dev/null || true
+    # Update project item status to "Done".
+    echo "  📋 Setting task status to 'Done' …"
+    project_set_status "$PROJECT_ID" "$ITEM_ID" "Done"
 
-  echo ""
-  echo "  ──────────────────────────────────────────"
-  echo "  PR_NUMBER=${PR_NUMBER}"
-  echo "  PR_URL=${PR_URL}"
-  echo "  TASK_NUMBER=${TASK_NUMBER}"
-  echo "  STATUS=merged"
-  echo "  ──────────────────────────────────────────"
-  echo ""
-  echo "  ✅  Task ${TASK_NUMBER} complete. PR merged and status set to Done."
+    # Sync the worktree to the updated feature branch tip.
+    echo "  🔄 Syncing worktree to ${FEATURE_BRANCH} …"
+    git -C "$WORKTREE_DIR" fetch origin "$FEATURE_BRANCH" --quiet
+    git -C "$WORKTREE_DIR" checkout --detach "origin/${FEATURE_BRANCH}" --quiet 2>/dev/null || true
 
-elif echo "$REVIEW_BODY" | grep -qE 'generated [0-9]+ comment'; then
-  COMMENT_COUNT=$(echo "$REVIEW_BODY" | sed -n 's/.*generated \([0-9][0-9]*\) comment.*/\1/p' | head -1)
-  echo ""
-  echo "  ⚠️  Review has ${COMMENT_COUNT} comment(s), fix mode not yet implemented."
-  echo ""
-  echo "  ──────────────────────────────────────────"
-  echo "  PR_NUMBER=${PR_NUMBER}"
-  echo "  PR_URL=${PR_URL}"
-  echo "  TASK_NUMBER=${TASK_NUMBER}"
-  echo "  STATUS=needs_fix"
-  echo "  COMMENT_COUNT=${COMMENT_COUNT}"
-  echo "  ──────────────────────────────────────────"
-
-else
-  # Fallback: review body doesn't match known patterns.
-  # Check if the body mentions any number of comments as a heuristic.
-  if echo "$REVIEW_BODY" | grep -qiE '[0-9]+ comment'; then
-    COMMENT_COUNT=$(echo "$REVIEW_BODY" | grep -oE '[0-9]+ comment' | head -1 | grep -oE '[0-9]+')
     echo ""
-    echo "  ⚠️  Review has ${COMMENT_COUNT} comment(s), fix mode not yet implemented."
-  else
+    echo "  ──────────────────────────────────────────"
+    echo "  PR_NUMBER=${PR_NUMBER}"
+    echo "  PR_URL=${PR_URL}"
+    echo "  TASK_NUMBER=${TASK_NUMBER}"
+    echo "  STATUS=merged"
+    echo "  FIX_COUNT=${fix_count}"
+    echo "  ──────────────────────────────────────────"
+    echo ""
+    echo "  ✅  Task ${TASK_NUMBER} complete. PR merged and status set to Done."
+    return 0
+  fi
+
+  # Detect comment count from various review body formats.
+  local comment_count=""
+  if echo "$review_body" | grep -qE 'generated [0-9]+ comment'; then
+    comment_count=$(echo "$review_body" | sed -n 's/.*generated \([0-9][0-9]*\) comment.*/\1/p' | head -1)
+  elif echo "$review_body" | grep -qiE '[0-9]+ comment'; then
+    comment_count=$(echo "$review_body" | grep -oE '[0-9]+ comment' | head -1 | grep -oE '[0-9]+')
+  fi
+
+  if [[ -z "$comment_count" ]]; then
     echo ""
     echo "  ⚠️  Copilot review received but could not determine result."
-    echo "     Review body: ${REVIEW_BODY}"
+    echo "     Review body: ${review_body}"
+    echo ""
+    echo "  ──────────────────────────────────────────"
+    echo "  PR_NUMBER=${PR_NUMBER}"
+    echo "  PR_URL=${PR_URL}"
+    echo "  TASK_NUMBER=${TASK_NUMBER}"
+    echo "  STATUS=unknown"
+    echo "  ──────────────────────────────────────────"
+    return 1
+  fi
+
+  # Review has comments — enter fix mode.
+  (( fix_count++ )) || true
+
+  # Check threshold before announcing fix mode.
+  if (( fix_count > MAX_FIX_COUNT )); then
+    echo ""
+    echo "  ❌  Fix count (${fix_count}) exceeds threshold (${MAX_FIX_COUNT})."
+    echo "     Stopping — escalate for manual review."
+    echo ""
+    echo "  ──────────────────────────────────────────"
+    echo "  PR_NUMBER=${PR_NUMBER}"
+    echo "  PR_URL=${PR_URL}"
+    echo "  TASK_NUMBER=${TASK_NUMBER}"
+    echo "  STATUS=escalate"
+    echo "  FIX_COUNT=${fix_count}"
+    echo "  ──────────────────────────────────────────"
+    return 1
   fi
 
   echo ""
-  echo "  ──────────────────────────────────────────"
-  echo "  PR_NUMBER=${PR_NUMBER}"
-  echo "  PR_URL=${PR_URL}"
-  echo "  TASK_NUMBER=${TASK_NUMBER}"
-  echo "  STATUS=unknown"
-  echo "  ──────────────────────────────────────────"
-fi
+  echo "  ⚠️  Review has ${comment_count} comment(s). Entering fix mode (iteration ${fix_count}/${MAX_FIX_COUNT}) …"
+
+  # Build and run the fix prompt.
+  build_fix_prompt "$PR_NUMBER"
+
+  echo ""
+  echo "  🔧 Running Copilot fix mode (iteration ${fix_count}) …"
+  echo ""
+
+  local fix_output
+  fix_output=$(
+    cd "$WORKTREE_DIR" && copilot \
+      --prompt "$PROMPT" \
+      --allow-all \
+      --autopilot \
+      2>&1 | tee /dev/stderr
+  ) || true
+
+  # Re-request Copilot review and re-enter polling loop.
+  echo ""
+  echo "  🤖 Re-requesting Copilot review on PR #${PR_NUMBER} (after fix iteration ${fix_count}) …"
+  local new_request_ts
+  new_request_ts=$(request_copilot_review "$PR_NUMBER")
+  echo "  ✅  Review re-requested at ${new_request_ts}"
+
+  echo "  ⏳ Polling for Copilot review (up to 20 minutes) …"
+
+  local new_review_json=""
+  if new_review_json=$(poll_copilot_review "$PR_NUMBER" "$new_request_ts" 20); then
+    echo "  ✅  Copilot review received."
+    handle_review "$new_review_json"
+    return $?
+  else
+    echo "  ⚠️  Poll timed out after fix. Re-requesting review (retry) …"
+    new_request_ts=$(request_copilot_review "$PR_NUMBER")
+    echo "  ✅  Review re-requested at ${new_request_ts}"
+    echo "  ⏳ Polling again (up to 20 minutes) …"
+
+    if new_review_json=$(poll_copilot_review "$PR_NUMBER" "$new_request_ts" 20); then
+      echo "  ✅  Copilot review received on retry."
+      handle_review "$new_review_json"
+      return $?
+    else
+      echo "  ❌  Copilot review not received after fix iteration ${fix_count}."
+      echo "     Leaving PR #${PR_NUMBER} open for manual review."
+      return 1
+    fi
+  fi
+}
+
+handle_review "$REVIEW_JSON"
