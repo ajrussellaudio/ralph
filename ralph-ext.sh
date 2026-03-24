@@ -148,7 +148,7 @@ project_find_board() {
       }
     }
   ' | jq -r --arg title "$label" \
-    '.data.viewer.projectsV2.nodes[] | select(.title == $title) | .id'
+    '[.data.viewer.projectsV2.nodes[] | select(.title == $title) | .id] | first // empty'
 }
 
 # Read the first "Todo" item from a project board (sorted by title).
@@ -302,9 +302,11 @@ fi
 
 # ── Worktree setup ─────────────────────────────────────────────────────────────
 
+_WORKTREE_CREATED=false
+
 # Remove the worktree on exit (clean finish, error, or Ctrl-C).
 cleanup() {
-  if git -C "$GIT_ROOT" worktree list | grep -q "$WORKTREE_DIR"; then
+  if $_WORKTREE_CREATED && git -C "$GIT_ROOT" worktree list | grep -q "$WORKTREE_DIR"; then
     echo ""
     echo "  Removing worktree at ${WORKTREE_DIR} …"
     git -C "$GIT_ROOT" worktree remove --force "$WORKTREE_DIR" 2>/dev/null || true
@@ -324,6 +326,7 @@ fi
 
 echo "  🏗️  Setting up worktree at ${WORKTREE_DIR} …"
 git -C "$GIT_ROOT" worktree add --detach "$WORKTREE_DIR" "origin/${FEATURE_BRANCH}"
+_WORKTREE_CREATED=true
 
 # ── Placeholder for actual work ───────────────────────────────────────────────
 
