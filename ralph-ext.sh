@@ -426,7 +426,7 @@ project_ensure_status_option() {
       }
     }
   ' -f fieldId="$field_id" \
-    -f options="$new_options")
+    -F options="$new_options")
 
   option_id=$(echo "$update_result" | jq -r --arg name "$status_name" \
     '[.data.updateProjectV2Field.projectV2Field.options[] | select(.name == $name) | .id] | first // empty')
@@ -930,8 +930,7 @@ while true; do
   # ── Fix loop ─────────────────────────────────────────────────────────────────
 
   fix_count=0
-  handle_review "$REVIEW_JSON"
-  review_status=$?
+  handle_review "$REVIEW_JSON" && review_status=0 || review_status=$?
 
   case $review_status in
     0)
