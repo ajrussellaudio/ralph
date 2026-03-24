@@ -12,16 +12,26 @@
 #   2. Load config from ralph.toml (repo, build, test)
 #   3. Look up a GitHub Projects V2 board whose title matches the label
 #   4. Read the first "Todo" item from the board (title sort order)
-#   5. Set the item status to "In Progress"
-#   6. Create feat/<label> branch if it doesn't exist on origin
-#   7. Set up a git worktree (torn down automatically on exit)
-#   8. (placeholder — future slices add implement/review logic here)
-#   9. Set the item status to "Done"
+#   5. Extract task number from the item title (e.g. "01" from "01 — TOML parser")
+#   6. Set the item status to "In Progress"
+#   7. Create feat/<label> branch if it doesn't exist on origin
+#   8. Set up a git worktree (torn down automatically on exit)
+#   9. Build the implement-ext prompt and run Copilot to write code + open a PR
+#  10. Capture the PR number; store the PR URL on the project item's "PR" field
+#  11. Output PR_NUMBER, PR_URL, TASK_NUMBER for subsequent review/merge phases
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 WORKTREE_DIR="${GIT_ROOT%/*}/$(basename "$GIT_ROOT")-ralph-workspace"
+
+# Modes: local project override (ralph/modes/) takes precedence over bundled modes.
+if [[ -d "$GIT_ROOT/ralph/modes" ]]; then
+  MODES_DIR="$GIT_ROOT/ralph/modes"
+else
+  MODES_DIR="$SCRIPT_DIR/modes"
+fi
 
 # ── Config resolution ──────────────────────────────────────────────────────────
 
@@ -152,7 +162,7 @@ project_find_board() {
 }
 
 # Read the first "Todo" item from a project board (sorted by title).
-# Prints a JSON object with {id, title, number} or nothing if none found.
+# Prints a JSON object with {id, title, number, body} or nothing if none found.
 project_next_todo() {
   local project_id="$1"
   gh api graphql -f query='
@@ -166,9 +176,11 @@ project_next_todo() {
                 ... on Issue {
                   title
                   number
+                  body
                 }
                 ... on DraftIssue {
                   title
+                  body
                 }
               }
               fieldValues(first: 20) {
@@ -195,7 +207,7 @@ project_next_todo() {
     | sort_by(.content.title // "")
     | .[0]
     | if . == null then empty
-      else {id, title: .content.title, number: .content.number}
+      else {id, title: .content.title, number: .content.number, body: .content.body}
       end
   '
 }
@@ -255,6 +267,84 @@ project_set_status() {
     -f optionId="$option_id" > /dev/null
 }
 
+# Find or create a "PR" custom text field on the project board.
+# Prints the field ID.
+project_ensure_pr_field() {
+  local project_id="$1"
+
+  # Try to find an existing "PR" text field.
+  local field_id
+  field_id=$(gh api graphql -f query='
+    query($projectId: ID!) {
+      node(id: $projectId) {
+        ... on ProjectV2 {
+          fields(first: 50) {
+            nodes {
+              ... on ProjectV2Field {
+                id
+                name
+                dataType
+              }
+            }
+          }
+        }
+      }
+    }
+  ' -f projectId="$project_id" | jq -r '
+    [.data.node.fields.nodes[] | select(.name == "PR" and .dataType == "TEXT")] | first | .id // empty
+  ')
+
+  if [[ -n "$field_id" ]]; then
+    echo "$field_id"
+    return 0
+  fi
+
+  # Field does not exist — create it.
+  gh api graphql -f query='
+    mutation($projectId: ID!, $name: String!, $dataType: ProjectV2CustomFieldType!) {
+      createProjectV2Field(input: {
+        projectId: $projectId
+        name: $name
+        dataType: $dataType
+      }) {
+        projectV2Field {
+          ... on ProjectV2Field {
+            id
+          }
+        }
+      }
+    }
+  ' -f projectId="$project_id" \
+    -f name="PR" \
+    -f dataType="TEXT" | jq -r '.data.createProjectV2Field.projectV2Field.id'
+}
+
+# Set a text field value on a project item.
+project_set_text_field() {
+  local project_id="$1"
+  local item_id="$2"
+  local field_id="$3"
+  local value="$4"
+
+  gh api graphql -f query='
+    mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $value: String!) {
+      updateProjectV2ItemFieldValue(input: {
+        projectId: $projectId
+        itemId: $itemId
+        fieldId: $fieldId
+        value: { text: $value }
+      }) {
+        projectV2Item {
+          id
+        }
+      }
+    }
+  ' -f projectId="$project_id" \
+    -f itemId="$item_id" \
+    -f fieldId="$field_id" \
+    -f value="$value" > /dev/null
+}
+
 # ── Find the project board ────────────────────────────────────────────────────
 
 echo ""
@@ -280,8 +370,23 @@ fi
 ITEM_ID=$(echo "$TODO_JSON" | jq -r '.id')
 ITEM_TITLE=$(echo "$TODO_JSON" | jq -r '.title')
 ITEM_NUMBER=$(echo "$TODO_JSON" | jq -r '.number // empty')
+ITEM_BODY=$(echo "$TODO_JSON" | jq -r '.body // ""')
 
 echo "  ▶  Next task: ${ITEM_TITLE}${ITEM_NUMBER:+ (#${ITEM_NUMBER})}"
+
+# Extract the task number from the title (e.g. "01" from "01 — TOML parser").
+TASK_NUMBER=""
+if [[ "$ITEM_TITLE" =~ ^([0-9]+) ]]; then
+  TASK_NUMBER="${BASH_REMATCH[1]}"
+fi
+
+if [[ -z "$TASK_NUMBER" ]]; then
+  echo "  ❌  Could not extract a task number from item title: '${ITEM_TITLE}'"
+  echo "     Expected title to start with a number, e.g. '01 — TOML parser'."
+  exit 1
+fi
+
+echo "  🔢 Task number: ${TASK_NUMBER}"
 
 # ── Set status to "In Progress" ───────────────────────────────────────────────
 
@@ -328,26 +433,99 @@ echo "  🏗️  Setting up worktree at ${WORKTREE_DIR} …"
 git -C "$GIT_ROOT" worktree add --detach "$WORKTREE_DIR" "origin/${FEATURE_BRANCH}"
 _WORKTREE_CREATED=true
 
-# ── Placeholder for actual work ───────────────────────────────────────────────
+# ── Build implement prompt ─────────────────────────────────────────────────────
+
+build_prompt() {
+  local mode_file="$MODES_DIR/implement-ext.md"
+  if [[ ! -f "$mode_file" ]]; then
+    echo "  ❌  Mode file not found: $mode_file"
+    exit 1
+  fi
+
+  PROMPT=$(cat "$mode_file")
+  PROMPT="${PROMPT//\{\{REPO\}\}/$REPO}"
+  PROMPT="${PROMPT//\{\{TASK_NUMBER\}\}/$TASK_NUMBER}"
+  PROMPT="${PROMPT//\{\{BUILD_CMD\}\}/$BUILD_CMD}"
+  PROMPT="${PROMPT//\{\{TEST_CMD\}\}/$TEST_CMD}"
+  PROMPT="${PROMPT//\{\{FEATURE_BRANCH\}\}/$FEATURE_BRANCH}"
+
+  # Task description may contain characters that break bash substitution,
+  # so we use a temp file approach for safe replacement.
+  local task_desc_file
+  task_desc_file=$(mktemp)
+  echo "$ITEM_BODY" > "$task_desc_file"
+
+  # Replace {{TASK_DESCRIPTION}} with the actual task body.
+  local task_desc
+  task_desc=$(cat "$task_desc_file")
+  PROMPT="${PROMPT//\{\{TASK_DESCRIPTION\}\}/$task_desc}"
+  rm -f "$task_desc_file"
+}
+
+# ── Run implement ──────────────────────────────────────────────────────────────
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║  Ralph External Review — task in progress                     ║"
+echo "║  Ralph External Review — implementing task ${TASK_NUMBER}$(printf '%*s' $((23 - ${#TASK_NUMBER})) '')║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 echo "  Issue:    #${ISSUE}"
 echo "  Task:     ${ITEM_TITLE}${ITEM_NUMBER:+ (#${ITEM_NUMBER})}"
-echo "  Branch:   ${FEATURE_BRANCH}"
+echo "  Branch:   ralph/task-${TASK_NUMBER} → ${FEATURE_BRANCH}"
 echo "  Worktree: ${WORKTREE_DIR}"
 echo "  Config:   repo=${REPO} build='${BUILD_CMD}' test='${TEST_CMD}'"
 echo ""
-echo "  (placeholder — implement/review logic will be added in future slices)"
+
+build_prompt
+
+echo "  🚀 Running Copilot implement mode …"
 echo ""
 
-# ── Set status to "Done" ──────────────────────────────────────────────────────
+OUTPUT=$(
+  cd "$WORKTREE_DIR" && copilot \
+    --prompt "$PROMPT" \
+    --allow-all \
+    --autopilot \
+    2>&1 | tee /dev/stderr
+) || true
 
-echo "  ✅  Setting task status to 'Done' …"
-project_set_status "$PROJECT_ID" "$ITEM_ID" "Done"
+# ── Capture PR number ──────────────────────────────────────────────────────────
 
 echo ""
-echo "  Task complete."
+echo "  🔍 Looking for PR from ralph/task-${TASK_NUMBER} → ${FEATURE_BRANCH} …"
+
+PR_JSON=$(gh pr list --repo "$REPO" --state open \
+  --head "ralph/task-${TASK_NUMBER}" \
+  --base "$FEATURE_BRANCH" \
+  --json number,url \
+  --jq '.[0] // empty' \
+  < /dev/null 2>/dev/null || echo "")
+
+if [[ -z "$PR_JSON" ]]; then
+  echo "  ⚠️  No PR found. Copilot may not have opened one."
+  echo "     Leaving task in 'In Progress' status."
+  exit 1
+fi
+
+PR_NUMBER=$(echo "$PR_JSON" | jq -r '.number')
+PR_URL=$(echo "$PR_JSON" | jq -r '.url')
+
+echo "  ✅  Found PR #${PR_NUMBER}: ${PR_URL}"
+
+# ── Store PR URL on project item ───────────────────────────────────────────────
+
+echo "  📎 Storing PR URL on project item …"
+PR_FIELD_ID=$(project_ensure_pr_field "$PROJECT_ID")
+project_set_text_field "$PROJECT_ID" "$ITEM_ID" "$PR_FIELD_ID" "$PR_URL"
+echo "  ✅  PR URL stored."
+
+# ── Output for subsequent phases ───────────────────────────────────────────────
+
+echo ""
+echo "  ──────────────────────────────────────────"
+echo "  PR_NUMBER=${PR_NUMBER}"
+echo "  PR_URL=${PR_URL}"
+echo "  TASK_NUMBER=${TASK_NUMBER}"
+echo "  ──────────────────────────────────────────"
+echo ""
+echo "  Implement phase complete. Ready for review."
