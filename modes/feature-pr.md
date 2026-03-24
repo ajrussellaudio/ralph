@@ -1,6 +1,6 @@
 # Ralph — Feature PR Mode
 
-All task issues under `{{FEATURE_LABEL}}` are closed and all task PRs have been merged into `{{FEATURE_BRANCH}}`. Your job is to open a pull request from `{{FEATURE_BRANCH}}` to `main` for human review.
+All task issues under `{{FEATURE_LABEL}}` are closed and all task PRs have been merged into `{{FEATURE_BRANCH}}`. Your job is to open a pull request from `{{FEATURE_BRANCH}}` to `main` and squash-merge it so the feature lands on `main` as a single commit.
 
 ⚠️ **Never** use `gh pr comment --body "..."` — it hangs waiting for stdin. Always write the body to a temp file and use `--body-file <file> < /dev/null`.
 
@@ -51,11 +51,17 @@ gh pr create \
 
 Replace `<label>` with the short label name (e.g. `foo-widget` from `feat/foo-widget`).
 
-## ⚠️ Critical constraint
+## Step 4 — Squash merge the pull request
 
-**You must never review, approve, or merge this PR.** Your role ends the moment the PR is opened. This PR is for human review only. Do not request a review, do not approve it, and do not merge it under any circumstances.
+Once the PR is open, immediately merge it using squash merge and delete the feature branch:
 
-## Step 4 — Stop
+```bash
+gh pr merge --repo {{REPO}} --squash --delete-branch < /dev/null
+```
+
+This ensures `main` receives a single squashed commit representing the entire feature, rather than exposing all of Ralph's intermediate working commits (implement, fix, re-review, merge task, etc.).
+
+## Step 5 — Stop
 
 Emit this token as your **final output** and stop:
 

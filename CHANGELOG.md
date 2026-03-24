@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Preflight existence check for `plans/<label>/` still validates against `$GIT_ROOT` (before the worktree is created) via a separate `PLANS_DIR_SRC` variable (#53)
 
 ### Changed
+- `feature-pr.md`: squash-merges the `feat/ → main` PR with `--squash --delete-branch` so `main` receives a single commit per feature instead of the full task-by-task history (#56)
 - `review.md`: LGTM path now sets `status: approved` and commits instead of immediately merging; merge is deferred to `merge` mode (#51)
 - `review-round2.md`: LGTM path now sets `status: approved` and commits instead of immediately merging; merge is deferred to `merge` mode (#51)
 - `lib/functions.sh`: renumbered routing priorities 2→3 (needs_review_2), 3→4 (needs_fix), 4→5 (in_progress), 5→6 (pending) to make room for new priority 2 (approved) (#51)
