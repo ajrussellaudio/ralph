@@ -7,6 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Copilot review request + poll + merge phase in `ralph-ext.sh`: after PR creation, requests a Copilot review via GitHub API, polls every 60 s for up to 20 min, re-requests once on timeout, merges on approval, sets project status to "Done", and syncs worktree (#66)
+- `request_copilot_review()` and `poll_copilot_review()` shell functions for requesting and polling Copilot PR reviews (#66)
+- Review comment detection: reviews with N comments stop with a message indicating fix mode is not yet implemented (#66)
 - `ralph-ext.sh` entry point with GitHub Projects V2 integration: finds a board by `--label` slug, reads the next "Todo" item, manages task lifecycle (In Progress → Done), creates `feat/<label>` branch, and sets up/tears down a git worktree (#64)
 - Reusable shell functions `project_find_board()`, `project_next_todo()`, `project_set_status()` for GitHub Projects V2 GraphQL queries (#64)
 - `modes/implement-ext.md`: implement mode prompt for external review — reads task description from a Project item body instead of a GitHub Issue, creates `ralph/task-<NN>` branch, handles optional build/test commands (#65)
