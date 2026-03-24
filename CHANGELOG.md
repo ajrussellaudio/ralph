@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Escalation logic in `ralph-ext.sh`: when `fix_count >= 10`, labels the PR `needs-human-review`, posts an explanatory comment, and sets the project item status to "Blocked" (#68)
+- `escalate_pr()` shell function orchestrating PR labeling, commenting, and project status update on fix threshold breach (#68)
+- `ensure_label()` shell function for idempotent label creation on the repo (#68)
+- `project_ensure_status_option()` shell function that creates a missing status option (e.g. "Blocked") on the project board's Status field via GraphQL (#68)
+- Multi-task outer loop in `ralph-ext.sh`: after merging or escalating a task, picks up the next "Todo" item from the board and continues (#68)
+- `<max_iterations>` CLI argument for `ralph-ext.sh` — each Copilot CLI invocation (implement or fix) counts toward the budget; Ralph stops when exhausted (#68)
+- `request_and_poll_review()` helper that encapsulates the request + poll + retry-on-timeout pattern (#68)
 - `modes/fix-ext.md`: fix mode prompt template for external review — reads Copilot's inline review comments via the GitHub PR comments API, extracts file paths/line numbers/comment bodies, and instructs Copilot CLI to fix each issue, run build/test, commit, and push (#67)
 - `build_fix_prompt()` shell function in `ralph-ext.sh` for loading and substituting the fix-ext prompt template (#67)
 - Fix→review→fix loop in `ralph-ext.sh`: when Copilot review has comments, runs fix mode, re-requests review, and loops until "no new comments" (merge) or fix count exceeds threshold (escalate) (#67)
@@ -26,6 +33,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Preflight validation in PRD mode: exits non-zero with a clear diagnostic if no `prd/<label>` issues exist and `feat/<label>` branch does not exist on origin (#7)
 
 ### Changed
+- `handle_review()` in `ralph-ext.sh` refactored from recursive to iterative loop with explicit return codes (0=merged, 2=escalated, 3=budget exhausted) (#68)
+- `MAX_FIX_COUNT` raised from 5 to 10 and threshold condition changed to `>=` to match escalation at exactly 10 fix rounds (#68)
+- `ralph-ext.sh` usage changed from `<issue> --label=<slug>` to `<issue> <max_iterations> --label=<slug>` (#68)
 - Review comment handling in `ralph-ext.sh` replaced placeholder "fix mode not yet implemented" messages with the full fix→review→fix loop (#67)
 - `project_next_todo()` now returns `body` in its JSON output (fetched from both Issue and DraftIssue content fragments) (#65)
 - Worktree and `determine_mode()` sync now use `origin/$FEATURE_BRANCH` instead of always `origin/main` (#6)
