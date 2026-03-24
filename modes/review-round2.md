@@ -1,66 +1,144 @@
 # Ralph — Review Mode (Round 2)
 
-You are verifying that round-1 review issues have been fixed on PR #{{PR_NUMBER}} in `{{REPO}}`.
+You are verifying that round-1 review issues have been fixed for task `{{TASK_ID}}` in `{{TASK_FILE}}`.
 
-⚠️ **Never** use `gh pr comment --body "..."` — it hangs waiting for stdin. Always write the body to a temp file and use `--body-file <file> < /dev/null`.
+## Step 1 — Read branch and prior review notes
 
-## Step 1 — Find the original issues
+Read the `branch` and all `review_notes` entries from `{{TASK_FILE}}`'s YAML front matter:
 
-Use `gh pr view {{PR_NUMBER}} --repo {{REPO}} --comments` or GitHub MCP tools to read the PR comment timeline. Find the `<!-- RALPH-REVIEW: REQUEST_CHANGES -->` comment and note every issue it listed.
+```bash
+python3 - <<'EOF'
+import re, sys
 
-## Step 2 — Verify fixes
+path = "{{TASK_FILE}}"
+with open(path) as f:
+    content = f.read()
 
-Delegate verification to a sub-agent. Do **not** re-review the whole PR.
+fm_m = re.match(r'^---\n(.*?)\n---\n', content, re.DOTALL)
+if not fm_m:
+    sys.exit("No front matter")
+fm = fm_m.group(1)
 
-Launch a **general-purpose sub-agent** with this prompt:
+# Read branch
+bm = re.search(r'(?m)^branch:\s*(\S+)', fm)
+print("branch:", bm.group(1) if bm else "")
 
-> "You are verifying fixes on PR #{{PR_NUMBER}} in `{{REPO}}`.
-> Get the diff with: `gh pr diff {{PR_NUMBER}} --repo {{REPO}}`
-> Run the test suite: `{{TEST_CMD}}`
+# Read all review_notes entries (full history)
+notes = []
+rn_match = re.search(r'(?m)^review_notes:(?:[^\n]*\n?)((?:[ \t]+[^\n]*\n?)*)', fm)
+if rn_match:
+    for em in re.finditer(r'[ \t]+-[ \t]+\|\n((?:(?:[ \t]{4}[^\n]*)?\n)*)', rn_match.group(0)):
+        lines = [l[4:] if l.startswith('    ') else '' for l in em.group(1).splitlines()]
+        notes.append('\n'.join(lines).rstrip())
+
+if notes:
+    print(f"review_notes ({len(notes)} entr{'y' if len(notes)==1 else 'ies'}):")
+    for i, note in enumerate(notes, 1):
+        print(f"  [Entry {i}]")
+        for line in note.splitlines():
+            print(f"    {line}")
+else:
+    print("review_notes: (none)")
+EOF
+```
+
+Record the branch name and the prior review notes.
+
+## Step 2 — Verify the fixes
+
+Delegate verification to a sub-agent. Do **not** re-review the whole diff.
+
+Launch a **general-purpose sub-agent** with this prompt, substituting the real branch name and prior notes:
+
+> "You are verifying fixes on task {{TASK_ID}} in the `{{REPO}}` repository.
+> Get the diff with: `git diff {{FEATURE_BRANCH}}...<branch>`
 > The previous review raised these specific issues:
-> <paste the full body of the round 1 REQUEST_CHANGES comment here>
+> <paste prior review_notes here>
 > Check only whether each of those issues has been resolved in the latest diff.
 > Do NOT raise new issues — only assess the original ones.
 > For each original issue, state: RESOLVED or UNRESOLVED (with a brief reason).
 > If all are RESOLVED, return exactly the word: LGTM"
 
-**If LGTM (all resolved):** post an APPROVED comment (see below), then emit the following token as your **final output** and end your response immediately:
+**If LGTM (all resolved):** proceed to steps 3–5 to set `status: approved`.
 
-<promise>STOP</promise>
+**If any issues are UNRESOLVED:** proceed to step 6 to update review notes and set `status: needs_fix`.
 
-**If any issues are UNRESOLVED:** this is the final round — post a REQUEST_CHANGES comment listing only the still-unresolved items. Then emit the following token as your **final output** and end your response immediately:
+---
 
-<promise>STOP</promise>
+## Steps 3–5: Approve (LGTM path)
 
-## Comment formats
-
-Post all review comments by writing the body to a temp file and using `--body-file` with stdin closed:
+### Step 3 — Set `status: approved` and commit
 
 ```bash
-cat > /tmp/ralph-review.md << 'EOF'
-<comment body here>
+python3 - <<'EOF'
+import re
+path = "{{TASK_FILE}}"
+with open(path) as f:
+    content = f.read()
+content = re.sub(r'(?m)^(status:\s*)\S+', r'\g<1>approved', content, count=1)
+with open(path, 'w') as f:
+    f.write(content)
 EOF
-gh pr comment {{PR_NUMBER}} --repo {{REPO}} --body-file /tmp/ralph-review.md < /dev/null
-rm /tmp/ralph-review.md
+git add "{{TASK_FILE}}"
+git commit -m "chore: task {{TASK_ID}} approved after round-2 review — ready to merge"
 ```
 
-**APPROVED:**
+Then emit `<promise>STOP</promise>` as your **final output** and stop immediately.
+
+---
+
+## Step 6: Update review notes and set `status: needs_fix` (issues unresolved path)
+
+Update `{{TASK_FILE}}`'s YAML front matter: set `status: needs_fix` and **append** a new `|` block scalar entry to the `review_notes` list with the still-unresolved issues:
+
+```bash
+python3 - <<'PYEOF'
+import re, sys
+
+path = "{{TASK_FILE}}"
+with open(path) as f:
+    content = f.read()
+
+fm_m = re.match(r'^---\n(.*?)\n---\n', content, re.DOTALL)
+if not fm_m:
+    sys.exit("No front matter found")
+
+fm = fm_m.group(1)
+rest = content[fm_m.end():]
+
+# Update status
+fm = re.sub(r'(?m)^(status:\s*)\S+', r'\g<1>needs_fix', fm)
+
+# Parse existing | block scalar entries from review_notes
+existing = []
+rn_match = re.search(r'(?m)^review_notes:(?:[^\n]*\n?)((?:[ \t]+[^\n]*\n?)*)', fm)
+if rn_match:
+    for em in re.finditer(r'[ \t]+-[ \t]+\|\n((?:(?:[ \t]{4}[^\n]*)?\n)*)', rn_match.group(0)):
+        lines = [l[4:] if l.startswith('    ') else '' for l in em.group(1).splitlines()]
+        existing.append('\n'.join(lines).rstrip())
+
+# Remove existing review_notes block
+fm = re.sub(r'(?m)^review_notes:(?:[^\n]*\n?)(?:[ \t]+[^\n]*\n?)*', '', fm)
+
+# New review note — replace this placeholder with the still-unresolved issues
+new_note = """<paste the unresolved issues here>"""
+existing.append(new_note.strip())
+
+# Build YAML list of | block scalars
+entries_yaml = ''
+for note in existing:
+    entries_yaml += '  - |\n'
+    for line in note.splitlines():
+        entries_yaml += '    ' + line + '\n'
+
+block = 'review_notes:\n' + entries_yaml
+fm = fm.rstrip('\n') + '\n' + block + '\n'
+
+with open(path, 'w') as f:
+    f.write(f"---\n{fm}---\n{rest}")
+PYEOF
+git add "{{TASK_FILE}}"
+git commit -m "chore: task {{TASK_ID}} needs_fix — unresolved issues after round-2 review"
 ```
-<!-- RALPH-REVIEW: APPROVED -->
 
-LGTM — no blocking issues found. ✅
-
-— Ralph 🤖
-```
-
-**REQUEST_CHANGES:**
-```
-<!-- RALPH-REVIEW: REQUEST_CHANGES -->
-
-The following issues need addressing before this can merge:
-
-1. **`path/to/file.rs` ~line N** — Description of the problem.
-   Suggested fix: ...
-
-— Ralph 🤖
-```
+Then emit `<promise>STOP</promise>` as your **final output** and stop immediately.

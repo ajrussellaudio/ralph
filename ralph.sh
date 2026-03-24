@@ -90,21 +90,33 @@ fi
 MAX_ITERATIONS="$1"
 FEATURE_LABEL=""
 FEATURE_BRANCH="main"
+RAW_LABEL=""
 
 if [[ $# -eq 2 ]]; then
   if [[ "$2" =~ ^--label=(.+)$ ]]; then
-    FEATURE_LABEL="prd/${BASH_REMATCH[1]}"
-    FEATURE_BRANCH="feat/${BASH_REMATCH[1]}"
+    RAW_LABEL="${BASH_REMATCH[1]}"
+    FEATURE_LABEL="prd/${RAW_LABEL}"
+    FEATURE_BRANCH="feat/${RAW_LABEL}"
   else
     usage
     exit 1
   fi
 fi
 
+# Source path for preflight validation — always the main checkout.
+PLANS_DIR_SRC="${GIT_ROOT}/plans/${RAW_LABEL}"
+# Runtime path handed to Copilot — set to the worktree after it is created.
+PLANS_DIR=""
+
 # ── Preflight checks ───────────────────────────────────────────────────────────
 
 if ! command -v copilot &>/dev/null; then
   echo "Error: 'copilot' not found in PATH. Install the GitHub Copilot CLI first."
+  exit 1
+fi
+
+if ! command -v python3 &>/dev/null; then
+  echo "Error: python3 is required but not found in PATH."
   exit 1
 fi
 
@@ -121,26 +133,21 @@ fi
 
 if [[ -z "$TEST_CMD" ]]; then
   echo "Error: No test command configured. Add 'test = \"your-test-cmd\"' to"
-  echo "ralph.toml in your project root (create it from ~/.ralph/project.example.toml)."
+  echo "ralph.toml in your project root (copy from project.example.toml)."
   exit 1
 fi
 
-# In PRD mode, validate that either prd/* issues exist or the feature branch already
-# exists on origin. If neither is true, the label is almost certainly a typo.
-if [[ -n "$FEATURE_LABEL" ]]; then
-  if PRD_ISSUE_COUNT=$(gh issue list --repo "$REPO" --state open \
-      --label "$FEATURE_LABEL" \
-      --json number --jq 'length' \
-      < /dev/null 2>/dev/null); then
-    if [[ "$PRD_ISSUE_COUNT" -eq 0 ]]; then
-      if ! git -C "$GIT_ROOT" ls-remote --exit-code --heads origin "$FEATURE_BRANCH" > /dev/null 2>&1; then
-        echo "Error: No open issues with label '${FEATURE_LABEL}' found, and branch 'origin/${FEATURE_BRANCH}' does not exist."
-        echo "Check that --label matches an existing PRD label, or create the feature branch first."
-        exit 1
-      fi
-    fi
-  else
-    echo "Warning: Could not reach GitHub API; skipping PRD preflight check."
+# In label mode, validate that the plans directory exists and contains task files.
+if [[ -n "$RAW_LABEL" ]]; then
+  if [[ ! -d "$PLANS_DIR_SRC" ]]; then
+    echo "Error: Plans directory not found at ${PLANS_DIR_SRC}"
+    echo "Create it and add at least one task file (e.g. 01-first-task.md)."
+    exit 1
+  fi
+  if ! ls "${PLANS_DIR_SRC}"/*.md &>/dev/null; then
+    echo "Error: No .md task files found in ${PLANS_DIR_SRC}"
+    echo "Add at least one task file (e.g. 01-first-task.md)."
+    exit 1
   fi
 fi
 
@@ -181,137 +188,14 @@ fi
 
 git -C "$GIT_ROOT" worktree add --detach "$WORKTREE_DIR" "origin/$FEATURE_BRANCH"
 
-# ── Routing ────────────────────────────────────────────────────────────────────
+# Now that the worktree exists, point PLANS_DIR inside it so Copilot mutates
+# task files within the worktree and those changes are included in git commits.
+PLANS_DIR="${WORKTREE_DIR}/plans/${RAW_LABEL}"
 
-# Populates MODE, PR_NUMBER, ISSUE_NUMBER based on current GitHub state.
-# MODE is one of: implement | review | review-round2 | fix | force-approve | merge | complete
-determine_mode() {
-  PR_NUMBER=""
-  ISSUE_NUMBER=""
+# ── Library ──────────────────────────────────────────────────────────────────
 
-  echo "  🔄 Syncing workspace…"
-  (cd "$WORKTREE_DIR" && git fetch origin && git reset --hard "origin/$FEATURE_BRANCH") > /dev/null 2>&1
+source "$SCRIPT_DIR/lib/functions.sh"
 
-  echo "  🔍 Checking for open ralph PRs in ${REPO}…"
-  OPEN_RALPH_PRS=$(gh pr list --repo "$REPO" --state open \
-    --base "$FEATURE_BRANCH" \
-    --json number,headRefName \
-    --jq '[.[] | select(.headRefName | startswith("ralph/issue-"))] | sort_by(.number)' \
-    < /dev/null 2>/dev/null || echo "[]")
-
-  PR_COUNT=$(echo "$OPEN_RALPH_PRS" | jq length)
-
-  if [[ "$PR_COUNT" -gt 0 ]]; then
-    PR_NUMBER=$(echo "$OPEN_RALPH_PRS" | jq -r '.[0].number')
-
-    COMMENT_BODIES=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-      --json comments --jq '[.comments[].body] | join("\n---\n")' \
-      < /dev/null 2>/dev/null || echo "")
-
-    APPROVED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: APPROVED" 2>/dev/null || true)
-    CHANGES_REQUESTED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: REQUEST_CHANGES" 2>/dev/null || true)
-
-    if [[ "${APPROVED:-0}" -gt 0 ]]; then
-      MODE="merge"
-    elif [[ "${CHANGES_REQUESTED:-0}" -ge 2 ]]; then
-      MODE="force-approve"
-    elif [[ "${CHANGES_REQUESTED:-0}" -eq 1 ]]; then
-      # If commits were pushed after the REQUEST_CHANGES comment → round 2 review
-      # Otherwise → fix mode (no new commits yet)
-      LAST_RC_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-        --json comments \
-        --jq '[.comments[] | select(.body | contains("RALPH-REVIEW: REQUEST_CHANGES"))] | last | .createdAt // ""' \
-        < /dev/null 2>/dev/null || echo "")
-      LATEST_COMMIT_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-        --json commits \
-        --jq '.commits | last | .committedDate // ""' \
-        < /dev/null 2>/dev/null || echo "")
-
-      if [[ -n "$LATEST_COMMIT_TIME" && -n "$LAST_RC_TIME" && "$LATEST_COMMIT_TIME" > "$LAST_RC_TIME" ]]; then
-        MODE="review-round2"
-      else
-        MODE="fix"
-      fi
-    else
-      MODE="review"
-    fi
-
-    echo "  ▶  Mode: $MODE  (PR #$PR_NUMBER)"
-  else
-    echo "  🔍 No open ralph PRs — checking issues…"
-
-    # Pick highest-priority open issue: high-priority label first, then lowest number.
-    # PRD mode: --label scopes to prd/<label>; exclude the PRD issue itself (prd) and blocked.
-    # Standalone mode: no label filter; additionally exclude any issue carrying a prd/* label.
-    if [[ -n "$FEATURE_LABEL" ]]; then
-      ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
-        --label "$FEATURE_LABEL" \
-        --json number,labels --limit 100 \
-        --jq '
-          [.[] | select(.labels | map(.name) | (any(. == "prd") or any(. == "blocked")) | not)]
-          | (
-              (map(select(.labels | map(.name) | any(. == "high priority"))) | sort_by(.number) | first)
-              // (sort_by(.number) | first)
-            )
-          | .number // empty
-        ' \
-        < /dev/null 2>/dev/null || echo "")
-    else
-      ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
-        --json number,labels --limit 100 \
-        --jq '
-          [.[] | select(.labels | map(.name) | (any(. == "prd") or any(startswith("prd/")) or any(. == "blocked")) | not)]
-          | (
-              (map(select(.labels | map(.name) | any(. == "high priority"))) | sort_by(.number) | first)
-              // (sort_by(.number) | first)
-            )
-          | .number // empty
-        ' \
-        < /dev/null 2>/dev/null || echo "")
-    fi
-
-    if [[ -n "$ISSUE_NUMBER" ]]; then
-      MODE="implement"
-      echo "  ▶  Mode: $MODE  (Issue #$ISSUE_NUMBER)"
-    elif [[ -n "$FEATURE_LABEL" && "$FEATURE_BRANCH" != "main" ]]; then
-      # PRD mode with no remaining task issues — check for an existing feat→main PR
-      FEATURE_PR_COUNT=$(gh pr list --repo "$REPO" --state open \
-        --base "main" \
-        --head "$FEATURE_BRANCH" \
-        --json number --jq 'length' \
-        < /dev/null 2>/dev/null)
-
-      if [[ "$FEATURE_PR_COUNT" == "0" ]]; then
-        MODE="feature-pr"
-        echo "  ▶  Mode: $MODE  (all task issues closed, opening feat→main PR)"
-      else
-        MODE="complete"
-        echo "  ▶  Mode: $MODE  (feat→main PR already open or check failed)"
-      fi
-    else
-      MODE="complete"
-      echo "  ▶  Mode: $MODE  (no open issues or PRs)"
-    fi
-  fi
-}
-
-# Loads the mode file and substitutes {{REPO}}, {{PR_NUMBER}}, {{ISSUE_NUMBER}}.
-build_prompt() {
-  local mode_file="$MODES_DIR/$MODE.md"
-  if [[ ! -f "$mode_file" ]]; then
-    echo "  ❌  Mode file not found: $mode_file"
-    exit 1
-  fi
-
-  PROMPT=$(cat "$mode_file")
-  PROMPT="${PROMPT//\{\{REPO\}\}/$REPO}"
-  PROMPT="${PROMPT//\{\{PR_NUMBER\}\}/$PR_NUMBER}"
-  PROMPT="${PROMPT//\{\{ISSUE_NUMBER\}\}/$ISSUE_NUMBER}"
-  PROMPT="${PROMPT//\{\{BUILD_CMD\}\}/$BUILD_CMD}"
-  PROMPT="${PROMPT//\{\{TEST_CMD\}\}/$TEST_CMD}"
-  PROMPT="${PROMPT//\{\{FEATURE_BRANCH\}\}/$FEATURE_BRANCH}"
-  PROMPT="${PROMPT//\{\{FEATURE_LABEL\}\}/$FEATURE_LABEL}"
-}
 
 # ── Main loop ──────────────────────────────────────────────────────────────────
 
@@ -345,6 +229,17 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     printf "\033[0m"
     exit 0
+  fi
+
+  # Blocked — all remaining pending tasks are waiting on unfinished dependencies
+  if [[ "$MODE" == "blocked" ]]; then
+    echo ""
+    printf "\033[1;33m"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  🚫  Ralph stopped: all remaining tasks are blocked by unfinished dependencies"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    printf "\033[0m"
+    exit 1
   fi
 
   build_prompt
