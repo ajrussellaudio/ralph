@@ -2,16 +2,16 @@
 # Ralph External Review — GitHub Projects V2 entry point
 #
 # Usage:
-#   ./ralph-ext.sh <issue> --label=<slug>
+#   ./ralph-ext.sh <issue> <max_iterations> --label=<slug>
 #
 # Example:
-#   ./ralph-ext.sh 63 --label=external-review
+#   ./ralph-ext.sh 63 50 --label=external-review
 #
 # End-to-end behavior:
-#   1. Parse CLI args (issue number + label slug)
+#   1. Parse CLI args (issue number, max iterations, label slug)
 #   2. Load config from ralph.toml (repo, build, test)
 #   3. Look up a GitHub Projects V2 board whose title matches the label
-#   4. Read the first "Todo" item from the board (title sort order)
+#   4. Loop: pick the next "Todo" item from the board (title sort order)
 #   5. Extract task number from the item title (e.g. "01" from "01 — TOML parser")
 #   6. Set the item status to "In Progress"
 #   7. Create feat/<label> branch if it doesn't exist on origin
@@ -20,9 +20,11 @@
 #  10. Capture the PR number; store the PR URL on the project item's "PR" field
 #  11. Request a Copilot review on the PR
 #  12. Poll for the review every 60 s (up to 20 min; re-request once on timeout)
-#  13. On approval: merge PR, set status to "Done", sync worktree
+#  13. On approval: merge PR, set status to "Done", sync worktree, loop to next task
 #  14. On comments: enter fix mode — run Copilot fix, re-request review, loop
-#  15. Fix loop continues until "no new comments" (merge) or threshold breach
+#  15. Fix loop continues until "no new comments" (merge) or fix_count >= 10
+#  16. On escalation: label PR needs-human-review, comment, set Blocked, loop to next
+#  17. Stop when no "Todo" items remain or iteration budget is exhausted
 
 set -euo pipefail
 
@@ -68,23 +70,25 @@ fi
 # ── Argument validation ────────────────────────────────────────────────────────
 
 usage() {
-  echo "Usage: $(basename "$0") <issue> --label=<slug>"
+  echo "Usage: $(basename "$0") <issue> <max_iterations> --label=<slug>"
   echo ""
-  echo "  issue           A GitHub issue number (positive integer)."
+  echo "  issue             A GitHub issue number (positive integer)."
+  echo "  max_iterations    Max number of Copilot CLI invocations (positive integer)."
   echo ""
-  echo "  --label=<slug>  Required label slug. Derives FEATURE_BRANCH=feat/<slug>."
-  echo "                  Must match the title of a GitHub Projects V2 board."
+  echo "  --label=<slug>    Required label slug. Derives FEATURE_BRANCH=feat/<slug>."
+  echo "                    Must match the title of a GitHub Projects V2 board."
   echo ""
   echo "Examples:"
-  echo "  $(basename "$0") 63 --label=external-review"
+  echo "  $(basename "$0") 63 50 --label=external-review"
 }
 
-if [[ $# -ne 2 ]]; then
+if [[ $# -ne 3 ]]; then
   usage
   exit 1
 fi
 
 ISSUE=""
+MAX_ITERATIONS=""
 LABEL=""
 
 for arg in "$@"; do
@@ -99,6 +103,8 @@ for arg in "$@"; do
     *)
       if [[ -z "$ISSUE" ]]; then
         ISSUE="$arg"
+      elif [[ -z "$MAX_ITERATIONS" ]]; then
+        MAX_ITERATIONS="$arg"
       else
         usage
         exit 1
@@ -115,6 +121,18 @@ fi
 
 if ! [[ "$ISSUE" =~ ^[1-9][0-9]*$ ]]; then
   echo "Error: <issue> must be a positive integer, got '$ISSUE'."
+  usage
+  exit 1
+fi
+
+if [[ -z "$MAX_ITERATIONS" ]]; then
+  echo "Error: Missing <max_iterations> argument."
+  usage
+  exit 1
+fi
+
+if ! [[ "$MAX_ITERATIONS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Error: <max_iterations> must be a positive integer, got '$MAX_ITERATIONS'."
   usage
   exit 1
 fi
@@ -349,6 +367,131 @@ project_set_text_field() {
     -f value="$value" > /dev/null
 }
 
+# Ensure a status option exists on the project board's Status field.
+# If the option doesn't exist, creates it. Returns the option ID.
+project_ensure_status_option() {
+  local project_id="$1"
+  local status_name="$2"
+
+  local field_info
+  field_info=$(gh api graphql -f query='
+    query($projectId: ID!) {
+      node(id: $projectId) {
+        ... on ProjectV2 {
+          field(name: "Status") {
+            ... on ProjectV2SingleSelectField {
+              id
+              options {
+                id
+                name
+              }
+            }
+          }
+        }
+      }
+    }
+  ' -f projectId="$project_id")
+
+  local field_id option_id
+  field_id=$(echo "$field_info" | jq -r '.data.node.field.id')
+  option_id=$(echo "$field_info" | jq -r --arg name "$status_name" \
+    '[.data.node.field.options[] | select(.name == $name) | .id] | first // empty')
+
+  if [[ -n "$option_id" ]]; then
+    echo "$option_id"
+    return 0
+  fi
+
+  # Option doesn't exist — create it via the updateProjectV2Field mutation.
+  local existing_options
+  existing_options=$(echo "$field_info" | jq '[.data.node.field.options[] | {name, color: "GRAY"}]')
+  local new_options
+  new_options=$(echo "$existing_options" | jq --arg name "$status_name" '. + [{name: $name, color: "RED"}]')
+
+  local update_result
+  update_result=$(gh api graphql -f query='
+    mutation($fieldId: ID!, $options: [ProjectV2SingleSelectFieldOptionInput!]!) {
+      updateProjectV2Field(input: {
+        fieldId: $fieldId
+        singleSelectOptions: $options
+      }) {
+        projectV2Field {
+          ... on ProjectV2SingleSelectField {
+            options {
+              id
+              name
+            }
+          }
+        }
+      }
+    }
+  ' -f fieldId="$field_id" \
+    -F options="$new_options")
+
+  option_id=$(echo "$update_result" | jq -r --arg name "$status_name" \
+    '[.data.updateProjectV2Field.projectV2Field.options[] | select(.name == $name) | .id] | first // empty')
+
+  if [[ -z "$option_id" ]]; then
+    echo "Error: Failed to create status option '${status_name}' on the project board." >&2
+    return 1
+  fi
+
+  echo "$option_id"
+}
+
+# Ensure a label exists on the repo. Creates it if missing.
+ensure_label() {
+  local label_name="$1"
+  local color="${2:-D93F0B}"
+  local description="${3:-}"
+
+  if ! gh label list --repo "$REPO" --json name --jq '.[].name' < /dev/null 2>/dev/null \
+      | grep -qxF "$label_name"; then
+    echo "  📝 Creating label '${label_name}' …" >&2
+    gh label create "$label_name" \
+      --repo "$REPO" \
+      --color "$color" \
+      --description "$description" \
+      < /dev/null > /dev/null 2>&1 || true
+  fi
+}
+
+# Escalate a stuck PR: label, comment, set project status to Blocked.
+escalate_pr() {
+  local pr="$1"
+  local project_id="$2"
+  local item_id="$3"
+  local fix_count="$4"
+
+  echo "  🚨 Escalating PR #${pr} after ${fix_count} fix rounds …"
+
+  # 1. Ensure the needs-human-review label exists, then apply it.
+  ensure_label "needs-human-review" "D93F0B" "PR stuck in review loop — needs human attention"
+  gh pr edit "$pr" --repo "$REPO" --add-label "needs-human-review" < /dev/null > /dev/null 2>&1
+
+  # 2. Post an explanatory comment on the PR.
+  local comment_file
+  comment_file=$(mktemp)
+  cat > "$comment_file" <<EOF
+## 🚨 Escalated for human review
+
+I've attempted **${fix_count} fix rounds** but Copilot still has comments on this PR.
+
+Leaving this for human review. The project board item has been moved to **Blocked** status.
+
+Please review the outstanding comments, make any necessary changes, and update the project board status when ready.
+EOF
+  gh pr comment "$pr" --repo "$REPO" --body-file "$comment_file" < /dev/null > /dev/null 2>&1
+  rm -f "$comment_file"
+
+  # 3. Set the project item status to "Blocked" (ensure the option exists).
+  echo "  📋 Setting task status to 'Blocked' …"
+  project_ensure_status_option "$project_id" "Blocked" > /dev/null
+  project_set_status "$project_id" "$item_id" "Blocked"
+
+  echo "  ✅  PR #${pr} escalated — labeled, commented, and marked Blocked."
+}
+
 # ── Find the project board ────────────────────────────────────────────────────
 
 echo ""
@@ -360,42 +503,6 @@ if [[ -z "$PROJECT_ID" ]]; then
   exit 1
 fi
 echo "  ✅  Found board (${PROJECT_ID})"
-
-# ── Get next Todo item ─────────────────────────────────────────────────────────
-
-echo "  🔍 Looking for next Todo item …"
-TODO_JSON=$(project_next_todo "$PROJECT_ID")
-
-if [[ -z "$TODO_JSON" ]]; then
-  echo "  ✅  No Todo items found on the board. Nothing to do."
-  exit 0
-fi
-
-ITEM_ID=$(echo "$TODO_JSON" | jq -r '.id')
-ITEM_TITLE=$(echo "$TODO_JSON" | jq -r '.title')
-ITEM_NUMBER=$(echo "$TODO_JSON" | jq -r '.number // empty')
-ITEM_BODY=$(echo "$TODO_JSON" | jq -r '.body // ""')
-
-echo "  ▶  Next task: ${ITEM_TITLE}${ITEM_NUMBER:+ (#${ITEM_NUMBER})}"
-
-# Extract the task number from the title (e.g. "01" from "01 — TOML parser").
-TASK_NUMBER=""
-if [[ "$ITEM_TITLE" =~ ^([0-9]+) ]]; then
-  TASK_NUMBER="${BASH_REMATCH[1]}"
-fi
-
-if [[ -z "$TASK_NUMBER" ]]; then
-  echo "  ❌  Could not extract a task number from item title: '${ITEM_TITLE}'"
-  echo "     Expected title to start with a number, e.g. '01 — TOML parser'."
-  exit 1
-fi
-
-echo "  🔢 Task number: ${TASK_NUMBER}"
-
-# ── Set status to "In Progress" ───────────────────────────────────────────────
-
-echo "  ⏳ Setting task status to 'In Progress' …"
-project_set_status "$PROJECT_ID" "$ITEM_ID" "In Progress"
 
 # ── Create feature branch if needed ───────────────────────────────────────────
 
@@ -437,7 +544,10 @@ echo "  🏗️  Setting up worktree at ${WORKTREE_DIR} …"
 git -C "$GIT_ROOT" worktree add --detach "$WORKTREE_DIR" "origin/${FEATURE_BRANCH}"
 _WORKTREE_CREATED=true
 
-# ── Build implement prompt ─────────────────────────────────────────────────────
+# ── Prompt builders ────────────────────────────────────────────────────────────
+
+OWNER="${REPO%%/*}"
+REPO_NAME="${REPO##*/}"
 
 build_prompt() {
   local mode_file="$MODES_DIR/implement-ext.md"
@@ -466,8 +576,6 @@ build_prompt() {
   rm -f "$task_desc_file"
 }
 
-# ── Build fix prompt ───────────────────────────────────────────────────────────
-
 build_fix_prompt() {
   local pr="$1"
   local mode_file="$MODES_DIR/fix-ext.md"
@@ -485,67 +593,7 @@ build_fix_prompt() {
   PROMPT="${PROMPT//\{\{TEST_CMD\}\}/$TEST_CMD}"
 }
 
-# ── Run implement ──────────────────────────────────────────────────────────────
-
-echo ""
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║  Ralph External Review — implementing task ${TASK_NUMBER}$(printf '%*s' $((23 - ${#TASK_NUMBER})) '')║"
-echo "╚══════════════════════════════════════════════════════════════╝"
-echo ""
-echo "  Issue:    #${ISSUE}"
-echo "  Task:     ${ITEM_TITLE}${ITEM_NUMBER:+ (#${ITEM_NUMBER})}"
-echo "  Branch:   ralph/task-${TASK_NUMBER} → ${FEATURE_BRANCH}"
-echo "  Worktree: ${WORKTREE_DIR}"
-echo "  Config:   repo=${REPO} build='${BUILD_CMD}' test='${TEST_CMD}'"
-echo ""
-
-build_prompt
-
-echo "  🚀 Running Copilot implement mode …"
-echo ""
-
-OUTPUT=$(
-  cd "$WORKTREE_DIR" && copilot \
-    --prompt "$PROMPT" \
-    --allow-all \
-    --autopilot \
-    2>&1 | tee /dev/stderr
-) || true
-
-# ── Capture PR number ──────────────────────────────────────────────────────────
-
-echo ""
-echo "  🔍 Looking for PR from ralph/task-${TASK_NUMBER} → ${FEATURE_BRANCH} …"
-
-PR_JSON=$(gh pr list --repo "$REPO" --state open \
-  --head "ralph/task-${TASK_NUMBER}" \
-  --base "$FEATURE_BRANCH" \
-  --json number,url \
-  --jq '.[0] // empty' \
-  < /dev/null 2>/dev/null || echo "")
-
-if [[ -z "$PR_JSON" ]]; then
-  echo "  ⚠️  No PR found. Copilot may not have opened one."
-  echo "     Leaving task in 'In Progress' status."
-  exit 1
-fi
-
-PR_NUMBER=$(echo "$PR_JSON" | jq -r '.number')
-PR_URL=$(echo "$PR_JSON" | jq -r '.url')
-
-echo "  ✅  Found PR #${PR_NUMBER}: ${PR_URL}"
-
-# ── Store PR URL on project item ───────────────────────────────────────────────
-
-echo "  📎 Storing PR URL on project item …"
-PR_FIELD_ID=$(project_ensure_pr_field "$PROJECT_ID")
-project_set_text_field "$PROJECT_ID" "$ITEM_ID" "$PR_FIELD_ID" "$PR_URL"
-echo "  ✅  PR URL stored."
-
-# ── Copilot review: request + poll + merge ─────────────────────────────────────
-
-OWNER="${REPO%%/*}"
-REPO_NAME="${REPO##*/}"
+# ── Copilot review helpers ─────────────────────────────────────────────────────
 
 # Request a Copilot review on the PR.
 # Prints the ISO-8601 timestamp at which the request was made.
@@ -593,128 +641,246 @@ poll_copilot_review() {
   return 1
 }
 
-echo ""
-echo "  🤖 Requesting Copilot review on PR #${PR_NUMBER} …"
-REQUEST_TS=$(request_copilot_review "$PR_NUMBER")
-echo "  ✅  Review requested at ${REQUEST_TS}"
+# Request a Copilot review with retry-on-timeout (up to 2 attempts).
+# Prints the review JSON on success, returns non-zero on total failure.
+request_and_poll_review() {
+  local pr="$1"
 
-echo "  ⏳ Polling for Copilot review (up to 20 minutes) …"
+  echo "  🤖 Requesting Copilot review on PR #${pr} …"
+  local request_ts
+  request_ts=$(request_copilot_review "$pr")
+  echo "  ✅  Review requested at ${request_ts}"
 
-REVIEW_JSON=""
-REVIEW_ATTEMPT=1
+  echo "  ⏳ Polling for Copilot review (up to 20 minutes) …"
 
-# First attempt: poll up to 20 minutes.
-if REVIEW_JSON=$(poll_copilot_review "$PR_NUMBER" "$REQUEST_TS" 20); then
-  echo "  ✅  Copilot review received."
-else
-  # Timeout — re-request once and retry.
-  echo "  ⚠️  Poll timed out. Re-requesting review (attempt 2/2) …"
-  REVIEW_ATTEMPT=2
-  REQUEST_TS=$(request_copilot_review "$PR_NUMBER")
-  echo "  ✅  Review re-requested at ${REQUEST_TS}"
-  echo "  ⏳ Polling again (up to 20 minutes) …"
-
-  if REVIEW_JSON=$(poll_copilot_review "$PR_NUMBER" "$REQUEST_TS" 20); then
-    echo "  ✅  Copilot review received on attempt 2."
-  else
-    echo "  ❌  Copilot review not received after two attempts (40 minutes total)."
-    echo "     Leaving PR #${PR_NUMBER} open for manual review."
-    exit 1
-  fi
-fi
-
-# ── Parse the review result and fix loop ─────────────────────────────────────
-
-MAX_FIX_COUNT=5
-fix_count=0
-
-handle_review() {
-  local review_json="$1"
-  local review_body
-  review_body=$(echo "$review_json" | jq -r '.body // ""')
-
-  if echo "$review_body" | grep -qi "no new comments"; then
-    echo "  ✅  Review passed — no new comments."
-
-    # Merge the PR.
-    echo "  🔀 Merging PR #${PR_NUMBER} …"
-    gh pr merge "$PR_NUMBER" --repo "$REPO" --merge < /dev/null
-
-    # Update project item status to "Done".
-    echo "  📋 Setting task status to 'Done' …"
-    project_set_status "$PROJECT_ID" "$ITEM_ID" "Done"
-
-    # Sync the worktree to the updated feature branch tip.
-    echo "  🔄 Syncing worktree to ${FEATURE_BRANCH} …"
-    git -C "$WORKTREE_DIR" fetch origin "$FEATURE_BRANCH" --quiet
-    git -C "$WORKTREE_DIR" checkout --detach "origin/${FEATURE_BRANCH}" --quiet 2>/dev/null || true
-
-    echo ""
-    echo "  ──────────────────────────────────────────"
-    echo "  PR_NUMBER=${PR_NUMBER}"
-    echo "  PR_URL=${PR_URL}"
-    echo "  TASK_NUMBER=${TASK_NUMBER}"
-    echo "  STATUS=merged"
-    echo "  FIX_COUNT=${fix_count}"
-    echo "  ──────────────────────────────────────────"
-    echo ""
-    echo "  ✅  Task ${TASK_NUMBER} complete. PR merged and status set to Done."
+  local review_json=""
+  if review_json=$(poll_copilot_review "$pr" "$request_ts" 20); then
+    echo "  ✅  Copilot review received."
+    echo "$review_json"
     return 0
   fi
 
-  # Detect comment count from various review body formats.
-  local comment_count=""
-  if echo "$review_body" | grep -qE 'generated [0-9]+ comment'; then
-    comment_count=$(echo "$review_body" | sed -n 's/.*generated \([0-9][0-9]*\) comment.*/\1/p' | head -1)
-  elif echo "$review_body" | grep -qiE '[0-9]+ comment'; then
-    comment_count=$(echo "$review_body" | grep -oE '[0-9]+ comment' | head -1 | grep -oE '[0-9]+')
+  # Timeout — re-request once and retry.
+  echo "  ⚠️  Poll timed out. Re-requesting review (attempt 2/2) …"
+  request_ts=$(request_copilot_review "$pr")
+  echo "  ✅  Review re-requested at ${request_ts}"
+  echo "  ⏳ Polling again (up to 20 minutes) …"
+
+  if review_json=$(poll_copilot_review "$pr" "$request_ts" 20); then
+    echo "  ✅  Copilot review received on attempt 2."
+    echo "$review_json"
+    return 0
   fi
 
-  if [[ -z "$comment_count" ]]; then
+  echo "  ❌  Copilot review not received after two attempts (40 minutes total)."
+  return 1
+}
+
+# ── Handle review result: iterative fix loop ─────────────────────────────────
+#
+# Processes a Copilot review and enters the fix loop if needed.
+# Returns: 0 = merged, 2 = escalated, 3 = budget exhausted, 1 = error
+#
+# Uses globals: fix_count, iteration_count, MAX_ITERATIONS, PR_NUMBER, PR_URL,
+#               TASK_NUMBER, ITEM_ID, PROJECT_ID, WORKTREE_DIR, FEATURE_BRANCH
+
+MAX_FIX_COUNT=10
+
+handle_review() {
+  local review_json="$1"
+
+  while true; do
+    local review_body
+    review_body=$(echo "$review_json" | jq -r '.body // ""')
+
+    if echo "$review_body" | grep -qi "no new comments"; then
+      echo "  ✅  Review passed — no new comments."
+
+      # Merge the PR.
+      echo "  🔀 Merging PR #${PR_NUMBER} …"
+      gh pr merge "$PR_NUMBER" --repo "$REPO" --merge < /dev/null
+
+      # Update project item status to "Done".
+      echo "  📋 Setting task status to 'Done' …"
+      project_set_status "$PROJECT_ID" "$ITEM_ID" "Done"
+
+      # Sync the worktree to the updated feature branch tip.
+      echo "  🔄 Syncing worktree to ${FEATURE_BRANCH} …"
+      git -C "$WORKTREE_DIR" fetch origin "$FEATURE_BRANCH" --quiet
+      git -C "$WORKTREE_DIR" checkout --detach "origin/${FEATURE_BRANCH}" --quiet 2>/dev/null || true
+
+      echo ""
+      echo "  ──────────────────────────────────────────"
+      echo "  PR_NUMBER=${PR_NUMBER}"
+      echo "  PR_URL=${PR_URL}"
+      echo "  TASK_NUMBER=${TASK_NUMBER}"
+      echo "  STATUS=merged"
+      echo "  FIX_COUNT=${fix_count}"
+      echo "  ──────────────────────────────────────────"
+      echo ""
+      echo "  ✅  Task ${TASK_NUMBER} complete. PR merged and status set to Done."
+      return 0
+    fi
+
+    # Detect comment count from various review body formats.
+    local comment_count=""
+    if echo "$review_body" | grep -qE 'generated [0-9]+ comment'; then
+      comment_count=$(echo "$review_body" | sed -n 's/.*generated \([0-9][0-9]*\) comment.*/\1/p' | head -1)
+    elif echo "$review_body" | grep -qiE '[0-9]+ comment'; then
+      comment_count=$(echo "$review_body" | grep -oE '[0-9]+ comment' | head -1 | grep -oE '[0-9]+')
+    fi
+
+    if [[ -z "$comment_count" ]]; then
+      echo ""
+      echo "  ⚠️  Copilot review received but could not determine result."
+      echo "     Review body: ${review_body}"
+      echo ""
+      echo "  ──────────────────────────────────────────"
+      echo "  PR_NUMBER=${PR_NUMBER}"
+      echo "  PR_URL=${PR_URL}"
+      echo "  TASK_NUMBER=${TASK_NUMBER}"
+      echo "  STATUS=unknown"
+      echo "  ──────────────────────────────────────────"
+      return 1
+    fi
+
+    # Review has comments — prepare to fix.
+    (( fix_count++ )) || true
+
+    # Check fix threshold (AC: escalate when fix_count >= 10).
+    if (( fix_count >= MAX_FIX_COUNT )); then
+      echo ""
+      echo "  ❌  Fix count (${fix_count}) reached threshold (${MAX_FIX_COUNT})."
+      escalate_pr "$PR_NUMBER" "$PROJECT_ID" "$ITEM_ID" "$fix_count"
+
+      echo ""
+      echo "  ──────────────────────────────────────────"
+      echo "  PR_NUMBER=${PR_NUMBER}"
+      echo "  PR_URL=${PR_URL}"
+      echo "  TASK_NUMBER=${TASK_NUMBER}"
+      echo "  STATUS=escalated"
+      echo "  FIX_COUNT=${fix_count}"
+      echo "  ──────────────────────────────────────────"
+      return 2
+    fi
+
+    # Check iteration budget before running fix.
+    if (( iteration_count >= MAX_ITERATIONS )); then
+      echo ""
+      echo "  ⏰  Iteration budget exhausted (${iteration_count}/${MAX_ITERATIONS}) mid-fix."
+      echo "     Leaving PR #${PR_NUMBER} open."
+      return 3
+    fi
+
     echo ""
-    echo "  ⚠️  Copilot review received but could not determine result."
-    echo "     Review body: ${review_body}"
+    echo "  ⚠️  Review has ${comment_count} comment(s). Entering fix mode (iteration ${fix_count}/${MAX_FIX_COUNT}) …"
+
+    # Build and run the fix prompt.
+    build_fix_prompt "$PR_NUMBER"
+
     echo ""
-    echo "  ──────────────────────────────────────────"
-    echo "  PR_NUMBER=${PR_NUMBER}"
-    echo "  PR_URL=${PR_URL}"
-    echo "  TASK_NUMBER=${TASK_NUMBER}"
-    echo "  STATUS=unknown"
-    echo "  ──────────────────────────────────────────"
-    return 1
+    echo "  🔧 Running Copilot fix mode (fix ${fix_count}, invocation ${iteration_count}/${MAX_ITERATIONS}) …"
+    echo ""
+
+    (( iteration_count++ )) || true
+
+    local fix_output
+    fix_output=$(
+      cd "$WORKTREE_DIR" && copilot \
+        --prompt "$PROMPT" \
+        --allow-all \
+        --autopilot \
+        2>&1 | tee /dev/stderr
+    ) || true
+
+    # Re-request Copilot review after fix.
+    echo ""
+    if ! review_json=$(request_and_poll_review "$PR_NUMBER"); then
+      echo "  ❌  Copilot review not received after fix iteration ${fix_count}."
+      echo "     Leaving PR #${PR_NUMBER} open for manual review."
+      return 1
+    fi
+
+    # Loop back to evaluate the new review.
+  done
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Multi-task outer loop
+# ══════════════════════════════════════════════════════════════════════════════
+
+iteration_count=0
+
+while true; do
+
+  # ── Budget check ───────────────────────────────────────────────────────────
+  if (( iteration_count >= MAX_ITERATIONS )); then
+    echo ""
+    echo "  ⏰  Iteration budget exhausted (${iteration_count}/${MAX_ITERATIONS}). Stopping."
+    echo "     Some Todo items may remain on the board."
+    break
   fi
 
-  # Review has comments — enter fix mode.
-  (( fix_count++ )) || true
+  # ── Get next Todo item ───────────────────────────────────────────────────────
 
-  # Check threshold before announcing fix mode.
-  if (( fix_count > MAX_FIX_COUNT )); then
-    echo ""
-    echo "  ❌  Fix count (${fix_count}) exceeds threshold (${MAX_FIX_COUNT})."
-    echo "     Stopping — escalate for manual review."
-    echo ""
-    echo "  ──────────────────────────────────────────"
-    echo "  PR_NUMBER=${PR_NUMBER}"
-    echo "  PR_URL=${PR_URL}"
-    echo "  TASK_NUMBER=${TASK_NUMBER}"
-    echo "  STATUS=escalate"
-    echo "  FIX_COUNT=${fix_count}"
-    echo "  ──────────────────────────────────────────"
-    return 1
+  echo ""
+  echo "  🔍 Looking for next Todo item …"
+  TODO_JSON=$(project_next_todo "$PROJECT_ID")
+
+  if [[ -z "$TODO_JSON" ]]; then
+    echo "  ✅  No Todo items remain on the board. All tasks processed!"
+    break
   fi
 
-  echo ""
-  echo "  ⚠️  Review has ${comment_count} comment(s). Entering fix mode (iteration ${fix_count}/${MAX_FIX_COUNT}) …"
+  ITEM_ID=$(echo "$TODO_JSON" | jq -r '.id')
+  ITEM_TITLE=$(echo "$TODO_JSON" | jq -r '.title')
+  ITEM_NUMBER=$(echo "$TODO_JSON" | jq -r '.number // empty')
+  ITEM_BODY=$(echo "$TODO_JSON" | jq -r '.body // ""')
 
-  # Build and run the fix prompt.
-  build_fix_prompt "$PR_NUMBER"
+  echo "  ▶  Next task: ${ITEM_TITLE}${ITEM_NUMBER:+ (#${ITEM_NUMBER})}"
+
+  # Extract the task number from the title (e.g. "01" from "01 — TOML parser").
+  TASK_NUMBER=""
+  if [[ "$ITEM_TITLE" =~ ^([0-9]+) ]]; then
+    TASK_NUMBER="${BASH_REMATCH[1]}"
+  fi
+
+  if [[ -z "$TASK_NUMBER" ]]; then
+    echo "  ❌  Could not extract a task number from item title: '${ITEM_TITLE}'"
+    echo "     Expected title to start with a number, e.g. '01 — TOML parser'."
+    exit 1
+  fi
+
+  echo "  🔢 Task number: ${TASK_NUMBER}"
+
+  # ── Set status to "In Progress" ─────────────────────────────────────────────
+
+  echo "  ⏳ Setting task status to 'In Progress' …"
+  project_set_status "$PROJECT_ID" "$ITEM_ID" "In Progress"
+
+  # ── Run implement ────────────────────────────────────────────────────────────
 
   echo ""
-  echo "  🔧 Running Copilot fix mode (iteration ${fix_count}) …"
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║  Ralph External Review — implementing task ${TASK_NUMBER}$(printf '%*s' $((23 - ${#TASK_NUMBER})) '')║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo ""
+  echo "  Issue:    #${ISSUE}"
+  echo "  Task:     ${ITEM_TITLE}${ITEM_NUMBER:+ (#${ITEM_NUMBER})}"
+  echo "  Branch:   ralph/task-${TASK_NUMBER} → ${FEATURE_BRANCH}"
+  echo "  Worktree: ${WORKTREE_DIR}"
+  echo "  Config:   repo=${REPO} build='${BUILD_CMD}' test='${TEST_CMD}'"
+  echo "  Budget:   ${iteration_count}/${MAX_ITERATIONS} invocations used"
   echo ""
 
-  local fix_output
-  fix_output=$(
+  build_prompt
+
+  echo "  🚀 Running Copilot implement mode …"
+  echo ""
+
+  (( iteration_count++ )) || true
+
+  OUTPUT=$(
     cd "$WORKTREE_DIR" && copilot \
       --prompt "$PROMPT" \
       --allow-all \
@@ -722,36 +888,73 @@ handle_review() {
       2>&1 | tee /dev/stderr
   ) || true
 
-  # Re-request Copilot review and re-enter polling loop.
+  # ── Capture PR number ────────────────────────────────────────────────────────
+
   echo ""
-  echo "  🤖 Re-requesting Copilot review on PR #${PR_NUMBER} (after fix iteration ${fix_count}) …"
-  local new_request_ts
-  new_request_ts=$(request_copilot_review "$PR_NUMBER")
-  echo "  ✅  Review re-requested at ${new_request_ts}"
+  echo "  🔍 Looking for PR from ralph/task-${TASK_NUMBER} → ${FEATURE_BRANCH} …"
 
-  echo "  ⏳ Polling for Copilot review (up to 20 minutes) …"
+  PR_JSON=$(gh pr list --repo "$REPO" --state open \
+    --head "ralph/task-${TASK_NUMBER}" \
+    --base "$FEATURE_BRANCH" \
+    --json number,url \
+    --jq '.[0] // empty' \
+    < /dev/null 2>/dev/null || echo "")
 
-  local new_review_json=""
-  if new_review_json=$(poll_copilot_review "$PR_NUMBER" "$new_request_ts" 20); then
-    echo "  ✅  Copilot review received."
-    handle_review "$new_review_json"
-    return $?
-  else
-    echo "  ⚠️  Poll timed out after fix. Re-requesting review (retry) …"
-    new_request_ts=$(request_copilot_review "$PR_NUMBER")
-    echo "  ✅  Review re-requested at ${new_request_ts}"
-    echo "  ⏳ Polling again (up to 20 minutes) …"
-
-    if new_review_json=$(poll_copilot_review "$PR_NUMBER" "$new_request_ts" 20); then
-      echo "  ✅  Copilot review received on retry."
-      handle_review "$new_review_json"
-      return $?
-    else
-      echo "  ❌  Copilot review not received after fix iteration ${fix_count}."
-      echo "     Leaving PR #${PR_NUMBER} open for manual review."
-      return 1
-    fi
+  if [[ -z "$PR_JSON" ]]; then
+    echo "  ⚠️  No PR found. Copilot may not have opened one."
+    echo "     Leaving task in 'In Progress' status."
+    exit 1
   fi
-}
 
-handle_review "$REVIEW_JSON"
+  PR_NUMBER=$(echo "$PR_JSON" | jq -r '.number')
+  PR_URL=$(echo "$PR_JSON" | jq -r '.url')
+
+  echo "  ✅  Found PR #${PR_NUMBER}: ${PR_URL}"
+
+  # ── Store PR URL on project item ─────────────────────────────────────────────
+
+  echo "  📎 Storing PR URL on project item …"
+  PR_FIELD_ID=$(project_ensure_pr_field "$PROJECT_ID")
+  project_set_text_field "$PROJECT_ID" "$ITEM_ID" "$PR_FIELD_ID" "$PR_URL"
+  echo "  ✅  PR URL stored."
+
+  # ── Copilot review: request + poll ───────────────────────────────────────────
+
+  echo ""
+  REVIEW_JSON=""
+  if ! REVIEW_JSON=$(request_and_poll_review "$PR_NUMBER"); then
+    echo "     Leaving PR #${PR_NUMBER} open for manual review."
+    exit 1
+  fi
+
+  # ── Fix loop ─────────────────────────────────────────────────────────────────
+
+  fix_count=0
+  handle_review "$REVIEW_JSON" && review_status=0 || review_status=$?
+
+  case $review_status in
+    0)
+      # Merged — continue to next task.
+      echo "  🔄 Moving on to next task …"
+      ;;
+    2)
+      # Escalated — continue to next task.
+      echo "  🔄 Moving on to next task …"
+      ;;
+    3)
+      # Budget exhausted mid-fix.
+      echo ""
+      echo "  ⏰  Iteration budget exhausted (${iteration_count}/${MAX_ITERATIONS}). Stopping."
+      break
+      ;;
+    *)
+      # Error — exit.
+      exit 1
+      ;;
+  esac
+
+done
+
+echo ""
+echo "  🏁 Ralph external review session complete."
+echo "     Invocations used: ${iteration_count}/${MAX_ITERATIONS}"
