@@ -1,5 +1,6 @@
 #!/bin/bash
-# lib/functions.sh — Sourceable library: YAML front matter helpers and routing.
+# lib/functions.sh — Sourceable library: YAML front matter helpers, TOML config
+# helpers, and routing.
 #
 # Sourced by both ralph.sh (runtime) and bats tests.
 # Global variables consumed by determine_mode():
@@ -7,6 +8,36 @@
 #   PLANS_DIR      — path to the plans/<label>/ directory
 #   REPO           — GitHub owner/repo slug
 #   FEATURE_BRANCH — e.g. feat/<label>
+
+# ── TOML config helpers ───────────────────────────────────────────────────────
+
+# Parses a TOML array value and prints one item per line (quotes stripped).
+# Usage: toml_get_array <key>
+# Requires the global $CONFIG_FILE variable to be set.
+# Returns 0 always; empty output for missing keys or empty arrays.
+# Limitation: does not support TOML escape sequences (e.g., \") inside values.
+toml_get_array() {
+  local key="$1"
+  [[ -n "$CONFIG_FILE" && -f "$CONFIG_FILE" ]] || return 0
+  python3 - "$CONFIG_FILE" "$key" <<'PYEOF'
+import sys, re
+
+config_path, key = sys.argv[1], sys.argv[2]
+with open(config_path) as f:
+    content = f.read()
+
+# Match key = [ ... ] spanning one or more lines
+pattern = r'^' + re.escape(key) + r'\s*=\s*\[(.*?)\]'
+m = re.search(pattern, content, re.MULTILINE | re.DOTALL)
+if not m:
+    sys.exit(0)
+
+inner = m.group(1)
+# Extract all double-quoted string items
+for item in re.findall(r'"([^"]*)"', inner):
+    print(item)
+PYEOF
+}
 
 # ── YAML front matter helpers ──────────────────────────────────────────────────
 
