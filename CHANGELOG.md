@@ -7,9 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `modes/fix-ext.md`: fix mode prompt template for external review — reads Copilot's inline review comments via the GitHub PR comments API, extracts file paths/line numbers/comment bodies, and instructs Copilot CLI to fix each issue, run build/test, commit, and push (#67)
+- `build_fix_prompt()` shell function in `ralph-ext.sh` for loading and substituting the fix-ext prompt template (#67)
+- Fix→review→fix loop in `ralph-ext.sh`: when Copilot review has comments, runs fix mode, re-requests review, and loops until "no new comments" (merge) or fix count exceeds threshold (escalate) (#67)
+- `fix_count` tracking and `MAX_FIX_COUNT` threshold (default 5) for the fix loop — stops with escalation message on breach (#67)
 - Copilot review request + poll + merge phase in `ralph-ext.sh`: after PR creation, requests a Copilot review via GitHub API, polls every 60 s for up to 20 min, re-requests once on timeout, merges on approval, sets project status to "Done", and syncs worktree (#66)
 - `request_copilot_review()` and `poll_copilot_review()` shell functions for requesting and polling Copilot PR reviews (#66)
-- Review comment detection: reviews with N comments stop with a message indicating fix mode is not yet implemented (#66)
 - `ralph-ext.sh` entry point with GitHub Projects V2 integration: finds a board by `--label` slug, reads the next "Todo" item, manages task lifecycle (In Progress → Done), creates `feat/<label>` branch, and sets up/tears down a git worktree (#64)
 - Reusable shell functions `project_find_board()`, `project_next_todo()`, `project_set_status()` for GitHub Projects V2 GraphQL queries (#64)
 - `modes/implement-ext.md`: implement mode prompt for external review — reads task description from a Project item body instead of a GitHub Issue, creates `ralph/task-<NN>` branch, handles optional build/test commands (#65)
@@ -23,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Preflight validation in PRD mode: exits non-zero with a clear diagnostic if no `prd/<label>` issues exist and `feat/<label>` branch does not exist on origin (#7)
 
 ### Changed
+- Review comment handling in `ralph-ext.sh` replaced placeholder "fix mode not yet implemented" messages with the full fix→review→fix loop (#67)
 - `project_next_todo()` now returns `body` in its JSON output (fetched from both Issue and DraftIssue content fragments) (#65)
 - Worktree and `determine_mode()` sync now use `origin/$FEATURE_BRANCH` instead of always `origin/main` (#6)
 - PR filter in `determine_mode()` now includes `--base "$FEATURE_BRANCH"` so only PRs targeting the current feature branch are considered (#7)
