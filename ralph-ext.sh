@@ -18,7 +18,10 @@
 #   8. Set up a git worktree (torn down automatically on exit)
 #   9. Build the implement-ext prompt and run Copilot to write code + open a PR
 #  10. Capture the PR number; store the PR URL on the project item's "PR" field
-#  11. Output PR_NUMBER, PR_URL, TASK_NUMBER for subsequent review/merge phases
+#  11. Request a Copilot review on the PR
+#  12. Poll for the review every 60 s (up to 20 min; re-request once on timeout)
+#  13. On approval: merge PR, set status to "Done", sync worktree
+#  14. On comments: stop with message (fix loop not yet implemented)
 
 set -euo pipefail
 
@@ -519,13 +522,148 @@ PR_FIELD_ID=$(project_ensure_pr_field "$PROJECT_ID")
 project_set_text_field "$PROJECT_ID" "$ITEM_ID" "$PR_FIELD_ID" "$PR_URL"
 echo "  ✅  PR URL stored."
 
-# ── Output for subsequent phases ───────────────────────────────────────────────
+# ── Copilot review: request + poll + merge ─────────────────────────────────────
+
+OWNER="${REPO%%/*}"
+REPO_NAME="${REPO##*/}"
+
+# Request a Copilot review on the PR.
+# Prints the ISO-8601 timestamp at which the request was made.
+request_copilot_review() {
+  local pr="$1"
+  if ! gh api "/repos/${REPO}/pulls/${pr}/requested_reviewers" \
+    -X POST -f 'reviewers[]=Copilot' > /dev/null 2>&1; then
+    echo "  ❌ Failed to request Copilot review (API error)." >&2
+    return 1
+  fi
+  date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+# Poll for a Copilot review submitted after $since_ts.
+# Returns a JSON object {state, body} on success, or empty string on timeout.
+# Polls every 60 s, up to $max_polls attempts (default 20 = 20 minutes).
+poll_copilot_review() {
+  local pr="$1"
+  local since_ts="$2"
+  local max_polls="${3:-20}"
+  local poll=0
+
+  while (( poll < max_polls )); do
+    sleep 60
+    (( poll++ )) || true
+
+    echo "  ⏳ Poll ${poll}/${max_polls} — checking for Copilot review …" >&2
+
+    local review
+    review=$(gh api "/repos/${REPO}/pulls/${pr}/reviews" \
+      --jq '
+        [ .[]
+          | select(.user.login == "copilot-pull-request-reviewer[bot]")
+          | select(.submitted_at > "'"${since_ts}"'")
+        ] | last // empty
+      ' 2>/dev/null || echo "")
+
+    if [[ -n "$review" ]]; then
+      echo "$review"
+      return 0
+    fi
+  done
+
+  # Timed out — no review found.
+  return 1
+}
 
 echo ""
-echo "  ──────────────────────────────────────────"
-echo "  PR_NUMBER=${PR_NUMBER}"
-echo "  PR_URL=${PR_URL}"
-echo "  TASK_NUMBER=${TASK_NUMBER}"
-echo "  ──────────────────────────────────────────"
-echo ""
-echo "  Implement phase complete. Ready for review."
+echo "  🤖 Requesting Copilot review on PR #${PR_NUMBER} …"
+REQUEST_TS=$(request_copilot_review "$PR_NUMBER")
+echo "  ✅  Review requested at ${REQUEST_TS}"
+
+echo "  ⏳ Polling for Copilot review (up to 20 minutes) …"
+
+REVIEW_JSON=""
+REVIEW_ATTEMPT=1
+
+# First attempt: poll up to 20 minutes.
+if REVIEW_JSON=$(poll_copilot_review "$PR_NUMBER" "$REQUEST_TS" 20); then
+  echo "  ✅  Copilot review received."
+else
+  # Timeout — re-request once and retry.
+  echo "  ⚠️  Poll timed out. Re-requesting review (attempt 2/2) …"
+  REVIEW_ATTEMPT=2
+  REQUEST_TS=$(request_copilot_review "$PR_NUMBER")
+  echo "  ✅  Review re-requested at ${REQUEST_TS}"
+  echo "  ⏳ Polling again (up to 20 minutes) …"
+
+  if REVIEW_JSON=$(poll_copilot_review "$PR_NUMBER" "$REQUEST_TS" 20); then
+    echo "  ✅  Copilot review received on attempt 2."
+  else
+    echo "  ❌  Copilot review not received after two attempts (40 minutes total)."
+    echo "     Leaving PR #${PR_NUMBER} open for manual review."
+    exit 1
+  fi
+fi
+
+# ── Parse the review result ──────────────────────────────────────────────────
+
+REVIEW_BODY=$(echo "$REVIEW_JSON" | jq -r '.body // ""')
+
+if echo "$REVIEW_BODY" | grep -qi "no new comments"; then
+  echo "  ✅  Review passed — no new comments."
+
+  # Merge the PR.
+  echo "  🔀 Merging PR #${PR_NUMBER} …"
+  gh pr merge "$PR_NUMBER" --repo "$REPO" --merge < /dev/null
+
+  # Update project item status to "Done".
+  echo "  📋 Setting task status to 'Done' …"
+  project_set_status "$PROJECT_ID" "$ITEM_ID" "Done"
+
+  # Sync the worktree to the updated feature branch tip.
+  echo "  🔄 Syncing worktree to ${FEATURE_BRANCH} …"
+  git -C "$WORKTREE_DIR" fetch origin "$FEATURE_BRANCH" --quiet
+  git -C "$WORKTREE_DIR" checkout --detach "origin/${FEATURE_BRANCH}" --quiet 2>/dev/null || true
+
+  echo ""
+  echo "  ──────────────────────────────────────────"
+  echo "  PR_NUMBER=${PR_NUMBER}"
+  echo "  PR_URL=${PR_URL}"
+  echo "  TASK_NUMBER=${TASK_NUMBER}"
+  echo "  STATUS=merged"
+  echo "  ──────────────────────────────────────────"
+  echo ""
+  echo "  ✅  Task ${TASK_NUMBER} complete. PR merged and status set to Done."
+
+elif echo "$REVIEW_BODY" | grep -qE 'generated [0-9]+ comment'; then
+  COMMENT_COUNT=$(echo "$REVIEW_BODY" | sed -n 's/.*generated \([0-9][0-9]*\) comment.*/\1/p' | head -1)
+  echo ""
+  echo "  ⚠️  Review has ${COMMENT_COUNT} comment(s), fix mode not yet implemented."
+  echo ""
+  echo "  ──────────────────────────────────────────"
+  echo "  PR_NUMBER=${PR_NUMBER}"
+  echo "  PR_URL=${PR_URL}"
+  echo "  TASK_NUMBER=${TASK_NUMBER}"
+  echo "  STATUS=needs_fix"
+  echo "  COMMENT_COUNT=${COMMENT_COUNT}"
+  echo "  ──────────────────────────────────────────"
+
+else
+  # Fallback: review body doesn't match known patterns.
+  # Check if the body mentions any number of comments as a heuristic.
+  if echo "$REVIEW_BODY" | grep -qiE '[0-9]+ comment'; then
+    COMMENT_COUNT=$(echo "$REVIEW_BODY" | grep -oE '[0-9]+ comment' | head -1 | grep -oE '[0-9]+')
+    echo ""
+    echo "  ⚠️  Review has ${COMMENT_COUNT} comment(s), fix mode not yet implemented."
+  else
+    echo ""
+    echo "  ⚠️  Copilot review received but could not determine result."
+    echo "     Review body: ${REVIEW_BODY}"
+  fi
+
+  echo ""
+  echo "  ──────────────────────────────────────────"
+  echo "  PR_NUMBER=${PR_NUMBER}"
+  echo "  PR_URL=${PR_URL}"
+  echo "  TASK_NUMBER=${TASK_NUMBER}"
+  echo "  STATUS=unknown"
+  echo "  ──────────────────────────────────────────"
+fi
