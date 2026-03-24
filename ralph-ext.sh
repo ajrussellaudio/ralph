@@ -531,8 +531,11 @@ REPO_NAME="${REPO##*/}"
 # Prints the ISO-8601 timestamp at which the request was made.
 request_copilot_review() {
   local pr="$1"
-  gh api "/repos/${REPO}/pulls/${pr}/requested_reviewers" \
-    -X POST -f 'reviewers[]=Copilot' > /dev/null 2>&1 || true
+  if ! gh api "/repos/${REPO}/pulls/${pr}/requested_reviewers" \
+    -X POST -f 'reviewers[]=Copilot' > /dev/null 2>&1; then
+    echo "  ❌ Failed to request Copilot review (API error)." >&2
+    return 1
+  fi
   date -u +"%Y-%m-%dT%H:%M:%SZ"
 }
 
@@ -549,7 +552,7 @@ poll_copilot_review() {
     sleep 60
     (( poll++ )) || true
 
-    echo "  ⏳ Poll ${poll}/${max_polls} — checking for Copilot review …"
+    echo "  ⏳ Poll ${poll}/${max_polls} — checking for Copilot review …" >&2
 
     local review
     review=$(gh api "/repos/${REPO}/pulls/${pr}/reviews" \
@@ -647,7 +650,7 @@ else
   # Fallback: review body doesn't match known patterns.
   # Check if the body mentions any number of comments as a heuristic.
   if echo "$REVIEW_BODY" | grep -qiE '[0-9]+ comment'; then
-    COMMENT_COUNT=$(echo "$REVIEW_BODY" | sed -n 's/.*\([0-9][0-9]*\) comment.*/\1/p' | head -1)
+    COMMENT_COUNT=$(echo "$REVIEW_BODY" | grep -oE '[0-9]+ comment' | head -1 | grep -oE '[0-9]+')
     echo ""
     echo "  ⚠️  Review has ${COMMENT_COUNT} comment(s), fix mode not yet implemented."
   else
