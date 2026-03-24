@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `ralph-ext.sh` entry point with GitHub Projects V2 integration: finds a board by `--label` slug, reads the next "Todo" item, manages task lifecycle (In Progress → Done), creates `feat/<label>` branch, and sets up/tears down a git worktree (#64)
+- Reusable shell functions `project_find_board()`, `project_next_todo()`, `project_set_status()` for GitHub Projects V2 GraphQL queries (#64)
 - `modes/feature-pr.md`: new mode that opens a `feat/<label> → main` PR when all task issues are closed and all task PRs are merged; includes explicit instruction never to review, approve, or merge the PR (#9)
 - `determine_mode()` in PRD mode: after no open task issues, checks for an existing `feat/<label> → main` PR — sets `MODE=feature-pr` if none exists, `MODE=complete` if one is already open (#9)
 - `--label=<label>` flag to `ralph.sh`; derives `FEATURE_BRANCH=feat/<label>` and `FEATURE_LABEL=prd/<label>` (#6)
