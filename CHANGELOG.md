@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - `lib/functions.sh`: `append_review_note`, `get_last_review_note`, and `get_all_review_notes` helper functions for review notes array manipulation (#50)
 - `test/yaml_helpers.bats`: tests for `append_review_note` (empty list, two rounds, colons, multi-line, field preservation, body preservation), `get_last_review_note`, and `get_all_review_notes` (#50)
+- `test/yaml_helpers.bats`: bats tests for `get_front_matter_field` with `|` block scalar `review_notes` — empty-string return, no corruption of sibling fields, colons in block scalar content, multiline block scalar content, and two-round append preserving all front matter fields (#52)
 - `status: approved` as a distinct intermediate state between review and merge; `determine_mode()` routes `approved → merge` at priority 2 (#51)
 - `test/routing.bats`: tests for `approved → merge` routing and priority ordering of `approved` vs `needs_review` and `needs_review_2` (#51)
 
