@@ -2,13 +2,13 @@
 # Ralph External Review — GitHub Projects V2 entry point
 #
 # Usage:
-#   ./ralph-ext.sh <issue> <max_iterations> --label=<slug>
+#   ./ralph-ext.sh <max_iterations> --label=<slug>
 #
 # Example:
-#   ./ralph-ext.sh 63 50 --label=external-review
+#   ./ralph-ext.sh 50 --label=external-review
 #
 # End-to-end behavior:
-#   1. Parse CLI args (issue number, max iterations, label slug)
+#   1. Parse CLI args (max iterations, label slug)
 #   2. Load config from ralph.toml (repo, build, test)
 #   3. Look up a GitHub Projects V2 board whose title matches the label
 #   4. Loop: pick the next "Todo" item from the board (title sort order)
@@ -70,24 +70,22 @@ fi
 # ── Argument validation ────────────────────────────────────────────────────────
 
 usage() {
-  echo "Usage: $(basename "$0") <issue> <max_iterations> --label=<slug>"
+  echo "Usage: $(basename "$0") <max_iterations> --label=<slug>"
   echo ""
-  echo "  issue             A GitHub issue number (positive integer)."
   echo "  max_iterations    Max number of Copilot CLI invocations (positive integer)."
   echo ""
   echo "  --label=<slug>    Required label slug. Derives FEATURE_BRANCH=feat/<slug>."
   echo "                    Must match the title of a GitHub Projects V2 board."
   echo ""
   echo "Examples:"
-  echo "  $(basename "$0") 63 50 --label=external-review"
+  echo "  $(basename "$0") 50 --label=external-review"
 }
 
-if [[ $# -ne 3 ]]; then
+if [[ $# -ne 2 ]]; then
   usage
   exit 1
 fi
 
-ISSUE=""
 MAX_ITERATIONS=""
 LABEL=""
 
@@ -101,9 +99,7 @@ for arg in "$@"; do
       exit 1
       ;;
     *)
-      if [[ -z "$ISSUE" ]]; then
-        ISSUE="$arg"
-      elif [[ -z "$MAX_ITERATIONS" ]]; then
+      if [[ -z "$MAX_ITERATIONS" ]]; then
         MAX_ITERATIONS="$arg"
       else
         usage
@@ -112,18 +108,6 @@ for arg in "$@"; do
       ;;
   esac
 done
-
-if [[ -z "$ISSUE" ]]; then
-  echo "Error: Missing <issue> argument."
-  usage
-  exit 1
-fi
-
-if ! [[ "$ISSUE" =~ ^[1-9][0-9]*$ ]]; then
-  echo "Error: <issue> must be a positive integer, got '$ISSUE'."
-  usage
-  exit 1
-fi
 
 if [[ -z "$MAX_ITERATIONS" ]]; then
   echo "Error: Missing <max_iterations> argument."
@@ -865,7 +849,6 @@ while true; do
   echo "║  Ralph External Review — implementing task ${TASK_NUMBER}$(printf '%*s' $((23 - ${#TASK_NUMBER})) '')║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo ""
-  echo "  Issue:    #${ISSUE}"
   echo "  Task:     ${ITEM_TITLE}${ITEM_NUMBER:+ (#${ITEM_NUMBER})}"
   echo "  Branch:   ralph/task-${TASK_NUMBER} → ${FEATURE_BRANCH}"
   echo "  Worktree: ${WORKTREE_DIR}"
