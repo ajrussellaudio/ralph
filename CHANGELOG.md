@@ -6,7 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `upstream` config key in `project.example.toml` for fork-based workflows; when set, the final feature PR is opened against the upstream repo instead of the fork (#93)
+- `UPSTREAM_REPO` variable in `ralph.sh` (defaults to `$REPO` when `upstream` is unset, preserving existing behaviour) (#93)
+- `FORK_OWNER` variable derived from the owner prefix of `$REPO` (#93)
+- `{{UPSTREAM_REPO}}` and `{{FORK_OWNER}}` placeholder substitutions in `build_prompt()` (#93)
+- Fork-based workflow documentation in `README.md` (#93)
+
 ### Changed
+- `modes/feature-pr.md` now checks for an existing PR against `{{UPSTREAM_REPO}}` with head `{{FORK_OWNER}}:{{FEATURE_BRANCH}}`, opens the PR with `--repo {{UPSTREAM_REPO}} --head {{FORK_OWNER}}:{{FEATURE_BRANCH}}`, and uses cross-repo `Closes {{REPO}}#` syntax in the PR body (#93)
 - `merge.md` now uses `gh pr merge --squash --delete-branch` so per-task PRs are squash-merged into the feature branch and the `ralph/issue-N` remote branch is deleted after merge (#79)
 
 ### Added

@@ -59,6 +59,15 @@ if [[ -z "$REPO" ]]; then
   REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || echo "")
 fi
 
+UPSTREAM_REPO=$(toml_get upstream)
+# Default to $REPO when upstream is not configured (personal project behaviour unchanged).
+if [[ -z "$UPSTREAM_REPO" ]]; then
+  UPSTREAM_REPO="$REPO"
+fi
+
+# Derive the fork owner from the owner prefix of $REPO (e.g. "you" from "you/project").
+FORK_OWNER="${REPO%%/*}"
+
 # ── Argument validation ────────────────────────────────────────────────────────
 
 usage() {
@@ -203,6 +212,8 @@ build_prompt() {
   PROMPT="${PROMPT//\{\{FEATURE_BRANCH\}\}/$FEATURE_BRANCH}"
   PROMPT="${PROMPT//\{\{FEATURE_LABEL\}\}/$FEATURE_LABEL}"
   PROMPT="${PROMPT//\{\{REVIEW_BACKEND\}\}/$REVIEW_BACKEND}"
+  PROMPT="${PROMPT//\{\{UPSTREAM_REPO\}\}/$UPSTREAM_REPO}"
+  PROMPT="${PROMPT//\{\{FORK_OWNER\}\}/$FORK_OWNER}"
 }
 
 # ── Startup detection ─────────────────────────────────────────────────────────

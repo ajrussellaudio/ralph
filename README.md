@@ -32,6 +32,9 @@ Each iteration Ralph:
    # Optional — Ralph infers this from `gh repo view` if omitted
    repo = "your-org/your-repo"
 
+   # Optional — for fork-based workflows (see below)
+   upstream = ""
+
    # Leave empty if there is no build step
    build = "npm run build"
 
@@ -86,7 +89,23 @@ To override Ralph's prompts for a specific project, create a `ralph/modes/` dire
 
 Use `/write-a-prd` and `/prd-to-issues` Copilot skills to create PRDs and task issues with the correct labels applied automatically.
 
-## Stopping Ralph
+## Fork-based workflows
+
+If Ralph is doing all the work on your fork (`you/project`) but the final feature PR should land on the upstream repo (`org/project`), set `upstream` in `ralph.toml`:
+
+```toml
+repo     = "you/project"   # your fork — Ralph owns this
+upstream = "org/project"   # upstream — final PR lands here
+```
+
+When `upstream` is set:
+- All issues and intermediate PRs continue to use `repo` (your fork).
+- The final `feature-pr` mode opens the PR against `upstream` with the correct cross-fork head (`you:feat/<label>`).
+- Issue-close links in the PR body use the cross-repo syntax (`Closes you/project#<n>`) so they auto-close on merge.
+
+When `upstream` is **not** set, behaviour is identical to today.
+
+
 
 Ralph stops automatically when:
 - All open issues are closed and all ralph PRs are merged (emits `COMPLETE`)

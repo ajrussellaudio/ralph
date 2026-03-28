@@ -4,6 +4,12 @@
 # GitHub repo slug (owner/repo). Optional — Ralph infers it from `gh repo view`.
 repo = ""
 
+# Upstream repo slug (owner/repo). Optional — for fork-based workflows where
+# Ralph does all his work on your fork but the final feature PR should land on
+# the upstream repo. Defaults to `repo` when not set (personal project behaviour
+# unchanged).
+upstream = ""
+
 # Build command — leave empty if no build step.
 build = ""
 

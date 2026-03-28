@@ -6,10 +6,10 @@ All task issues under `{{FEATURE_LABEL}}` are closed and all task PRs have been 
 
 ## Step 1 — Verify no existing PR
 
-Check whether a `{{FEATURE_BRANCH}} → main` PR already exists:
+Check whether a `{{FEATURE_BRANCH}} → main` PR already exists against the upstream repo:
 
 ```bash
-gh pr list --repo {{REPO}} --state open --base main --head {{FEATURE_BRANCH}} --json number --jq '.[].number' < /dev/null
+gh pr list --repo {{UPSTREAM_REPO}} --state open --base main --head {{FORK_OWNER}}:{{FEATURE_BRANCH}} --json number --jq '.[].number' < /dev/null
 ```
 
 If one already exists, emit `<promise>STOP</promise>` immediately and do nothing else.
@@ -33,23 +33,26 @@ gh issue list --repo {{REPO}} --state closed --label "{{FEATURE_LABEL}}" --json 
 
 Compose a PR description that:
 - Opens with a one-paragraph summary of what the feature does
-- References the parent PRD issue with `Closes #<prd-issue-number>`
-- Lists every task issue closed as part of this feature (e.g. `- #12 Short title`)
+- References the parent PRD issue with `Closes {{REPO}}#<prd-issue-number>` (cross-repo syntax)
+- Lists every task issue closed as part of this feature (e.g. `- {{REPO}}#12 Short title`)
 - Notes any known limitations or rough edges
 
 Then open the PR:
 
 ```bash
 gh pr create \
-  --repo {{REPO}} \
+  --repo {{UPSTREAM_REPO}} \
   --base main \
-  --head {{FEATURE_BRANCH}} \
+  --head {{FORK_OWNER}}:{{FEATURE_BRANCH}} \
   --title "feat(<label>): <short summary>" \
   --body "<PR description>" \
   < /dev/null
 ```
 
 Replace `<label>` with the short label name (e.g. `foo-widget` from `feat/foo-widget`).
+
+When composing the PR description, use cross-repo issue-close syntax so the issue on the fork is closed when the upstream PR is merged:
+- `Closes {{REPO}}#<prd-issue-number>` (instead of bare `Closes #<number>`)
 
 ## ⚠️ Critical constraint
 
