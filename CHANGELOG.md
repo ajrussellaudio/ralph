@@ -7,24 +7,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- Escalation logic in `ralph-ext.sh`: when `fix_count >= 10`, labels the PR `needs-human-review`, posts an explanatory comment, and sets the project item status to "Blocked" (#68)
+- `upstream` config key in `project.example.toml` for fork-based workflows; when set, the final feature PR is opened against the upstream repo instead of the fork (#93)
+- `UPSTREAM_REPO` variable in `ralph.sh` (defaults to `$REPO` when `upstream` is unset, preserving existing behaviour) (#93)
+- `FORK_OWNER` variable derived from the owner prefix of `$REPO` (#93)
+- `{{UPSTREAM_REPO}}` and `{{FORK_OWNER}}` placeholder substitutions in `build_prompt()` (#93)
+- Fork-based workflow documentation in `README.md` (#93)
+
+### Changed
+- `modes/feature-pr.md` now checks for an existing PR against `{{UPSTREAM_REPO}}` with head `{{FORK_OWNER}}:{{FEATURE_BRANCH}}`, opens the PR with `--repo {{UPSTREAM_REPO}} --head {{FORK_OWNER}}:{{FEATURE_BRANCH}}`, and uses cross-repo `Closes {{REPO}}#` syntax in the PR body (#93)
+- `merge.md` now uses `gh pr merge --squash --delete-branch` so per-task PRs are squash-merged into the feature branch and the `ralph/issue-N` remote branch is deleted after merge (#79)
+
+### Added
+- `modes/escalate.md`: new mode that ensures the `needs-human-review` label exists, labels the PR `needs-human-review`, labels the originating issue `blocked`, posts an explanatory comment on the PR, and emits STOP so the outer loop skips to the next unblocked task (#78)
+- `detect_review_backend()` function in `ralph.sh` that queries the GitHub API at startup, sets `REVIEW_BACKEND` to `copilot` when `copilot-pull-request-reviewer` is installed on the repo, and defaults to `comments` on any API failure or when the app is absent (#76)
+- `REVIEW_BACKEND` global exported at startup so all subsequent functions in the run can consume it (#76)
+- Copilot bot review routing in `determine_mode()`: when `REVIEW_BACKEND=copilot`, queries the bot review state instead of HTML comment sentinels — no review → `wait`, `APPROVED` → `merge`, `CHANGES_REQUESTED` with fix_count < 10 → `fix-bot`, fix_count >= 10 → `escalate` (#77)
+- `fix_count` tracking via `<!-- RALPH-FIX-BOT: RESPONSE -->` comment counting on the copilot bot path (#77)
+- `modes/wait.md`: new mode that emits STOP so the outer loop retries on the next iteration while awaiting a Copilot bot review (#77)
+- `modes/fix-bot.md`: new mode that reads all inline `copilot-pull-request-reviewer[bot]` comments, fixes them in one pass, commits, pushes, posts a fix-round marker comment, and re-requests Copilot review (#77)
+- `{{REVIEW_BACKEND}}` placeholder substitution in `build_prompt()` so mode files can act conditionally on the review backend (#77)
+- `lib/routing.sh` extracts `detect_review_backend()` and `determine_mode()` from `ralph.sh` into a separately sourceable library, enabling unit testing (#81)
+- `test/routing.bats`: bats tests covering all 3 `detect_review_backend()` cases and the full 12-case `determine_mode()` routing matrix for both `REVIEW_BACKEND=copilot` and `REVIEW_BACKEND=comments`, using a mock `gh` binary in `test/helpers/` (#81)
+- `implement.md` Step 4b: requests a Copilot review immediately after opening the PR when `REVIEW_BACKEND=copilot` (#77)
 - `escalate_pr()` shell function orchestrating PR labeling, commenting, and project status update on fix threshold breach (#68)
 - `ensure_label()` shell function for idempotent label creation on the repo (#68)
 - `project_ensure_status_option()` shell function that creates a missing status option (e.g. "Blocked") on the project board's Status field via GraphQL (#68)
-- Multi-task outer loop in `ralph-ext.sh`: after merging or escalating a task, picks up the next "Todo" item from the board and continues (#68)
-- `<max_iterations>` CLI argument for `ralph-ext.sh` — each Copilot CLI invocation (implement or fix) counts toward the budget; Ralph stops when exhausted (#68)
 - `request_and_poll_review()` helper that encapsulates the request + poll + retry-on-timeout pattern (#68)
-- `modes/fix-ext.md`: fix mode prompt template for external review — reads Copilot's inline review comments via the GitHub PR comments API, extracts file paths/line numbers/comment bodies, and instructs Copilot CLI to fix each issue, run build/test, commit, and push (#67)
-- `build_fix_prompt()` shell function in `ralph-ext.sh` for loading and substituting the fix-ext prompt template (#67)
-- Fix→review→fix loop in `ralph-ext.sh`: when Copilot review has comments, runs fix mode, re-requests review, and loops until "no new comments" (merge) or fix count exceeds threshold (escalate) (#67)
 - `fix_count` tracking and `MAX_FIX_COUNT` threshold (default 5) for the fix loop — stops with escalation message on breach (#67)
-- Copilot review request + poll + merge phase in `ralph-ext.sh`: after PR creation, requests a Copilot review via GitHub API, polls every 60 s for up to 20 min, re-requests once on timeout, merges on approval, sets project status to "Done", and syncs worktree (#66)
 - `request_copilot_review()` and `poll_copilot_review()` shell functions for requesting and polling Copilot PR reviews (#66)
-- `ralph-ext.sh` entry point with GitHub Projects V2 integration: finds a board by `--label` slug, reads the next "Todo" item, manages task lifecycle (In Progress → Done), creates `feat/<label>` branch, and sets up/tears down a git worktree (#64)
 - Reusable shell functions `project_find_board()`, `project_next_todo()`, `project_set_status()` for GitHub Projects V2 GraphQL queries (#64)
-- `modes/implement-ext.md`: implement mode prompt for external review — reads task description from a Project item body instead of a GitHub Issue, creates `ralph/task-<NN>` branch, handles optional build/test commands (#65)
 - `project_ensure_pr_field()` and `project_set_text_field()` shell functions for creating and setting a "PR" custom text field on a GitHub Projects V2 board (#65)
-- `ralph-ext.sh` implement phase: extracts task number from item title, builds implement-ext prompt with `{{TASK_DESCRIPTION}}` substitution, runs Copilot CLI, captures the opened PR number/URL, and stores the PR URL on the project item's "PR" field (#65)
 - `modes/feature-pr.md`: new mode that opens a `feat/<label> → main` PR when all task issues are closed and all task PRs are merged; includes explicit instruction never to review, approve, or merge the PR (#9)
 - `determine_mode()` in PRD mode: after no open task issues, checks for an existing `feat/<label> → main` PR — sets `MODE=feature-pr` if none exists, `MODE=complete` if one is already open (#9)
 - `--label=<label>` flag to `ralph.sh`; derives `FEATURE_BRANCH=feat/<label>` and `FEATURE_LABEL=prd/<label>` (#6)
@@ -33,10 +45,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Preflight validation in PRD mode: exits non-zero with a clear diagnostic if no `prd/<label>` issues exist and `feat/<label>` branch does not exist on origin (#7)
 
 ### Changed
-- `handle_review()` in `ralph-ext.sh` refactored from recursive to iterative loop with explicit return codes (0=merged, 2=escalated, 3=budget exhausted) (#68)
+- `handle_review()` refactored from recursive to iterative loop with explicit return codes (0=merged, 2=escalated, 3=budget exhausted) (#68)
 - `MAX_FIX_COUNT` raised from 5 to 10 and threshold condition changed to `>=` to match escalation at exactly 10 fix rounds (#68)
-- `ralph-ext.sh` usage changed from `<issue> --label=<slug>` to `<issue> <max_iterations> --label=<slug>` (#68)
-- Review comment handling in `ralph-ext.sh` replaced placeholder "fix mode not yet implemented" messages with the full fix→review→fix loop (#67)
+- Review comment handling replaced placeholder "fix mode not yet implemented" messages with the full fix→review→fix loop (#67)
 - `project_next_todo()` now returns `body` in its JSON output (fetched from both Issue and DraftIssue content fragments) (#65)
 - Worktree and `determine_mode()` sync now use `origin/$FEATURE_BRANCH` instead of always `origin/main` (#6)
 - PR filter in `determine_mode()` now includes `--base "$FEATURE_BRANCH"` so only PRs targeting the current feature branch are considered (#7)
@@ -56,3 +67,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 - Redundant "Step 0 — Sync workspace" block from all mode files (`fix.md`, `force-approve.md`, `implement.md`, `merge.md`, `review.md`, `review-round2.md`); `ralph.sh` already syncs the worktree before building any prompt (#2)
+- `ralph-ext.sh`, `modes/implement-ext.md`, and `modes/fix-ext.md` — all useful behaviour absorbed into `ralph.sh`, `fix-bot.md`, `escalate.md`, and `merge.md`; GitHub Projects V2 task tracking intentionally dropped in favour of Issues (#80)

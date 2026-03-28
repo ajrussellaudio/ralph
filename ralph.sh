@@ -59,6 +59,15 @@ if [[ -z "$REPO" ]]; then
   REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || echo "")
 fi
 
+UPSTREAM_REPO=$(toml_get upstream)
+# Default to $REPO when upstream is not configured (personal project behaviour unchanged).
+if [[ -z "$UPSTREAM_REPO" ]]; then
+  UPSTREAM_REPO="$REPO"
+fi
+
+# Derive the fork owner from the owner prefix of $REPO (e.g. "you" from "you/project").
+FORK_OWNER="${REPO%%/*}"
+
 # ── Argument validation ────────────────────────────────────────────────────────
 
 usage() {
@@ -181,119 +190,10 @@ fi
 
 git -C "$GIT_ROOT" worktree add --detach "$WORKTREE_DIR" "origin/$FEATURE_BRANCH"
 
-# ── Routing ────────────────────────────────────────────────────────────────────
+# ── Review backend detection & routing ────────────────────────────────────────
 
-# Populates MODE, PR_NUMBER, ISSUE_NUMBER based on current GitHub state.
-# MODE is one of: implement | review | review-round2 | fix | force-approve | merge | complete
-determine_mode() {
-  PR_NUMBER=""
-  ISSUE_NUMBER=""
-
-  echo "  🔄 Syncing workspace…"
-  (cd "$WORKTREE_DIR" && git fetch origin && git reset --hard "origin/$FEATURE_BRANCH") > /dev/null 2>&1
-
-  echo "  🔍 Checking for open ralph PRs in ${REPO}…"
-  OPEN_RALPH_PRS=$(gh pr list --repo "$REPO" --state open \
-    --base "$FEATURE_BRANCH" \
-    --json number,headRefName \
-    --jq '[.[] | select(.headRefName | startswith("ralph/issue-"))] | sort_by(.number)' \
-    < /dev/null 2>/dev/null || echo "[]")
-
-  PR_COUNT=$(echo "$OPEN_RALPH_PRS" | jq length)
-
-  if [[ "$PR_COUNT" -gt 0 ]]; then
-    PR_NUMBER=$(echo "$OPEN_RALPH_PRS" | jq -r '.[0].number')
-
-    COMMENT_BODIES=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-      --json comments --jq '[.comments[].body] | join("\n---\n")' \
-      < /dev/null 2>/dev/null || echo "")
-
-    APPROVED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: APPROVED" 2>/dev/null || true)
-    CHANGES_REQUESTED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: REQUEST_CHANGES" 2>/dev/null || true)
-
-    if [[ "${APPROVED:-0}" -gt 0 ]]; then
-      MODE="merge"
-    elif [[ "${CHANGES_REQUESTED:-0}" -ge 2 ]]; then
-      MODE="force-approve"
-    elif [[ "${CHANGES_REQUESTED:-0}" -eq 1 ]]; then
-      # If commits were pushed after the REQUEST_CHANGES comment → round 2 review
-      # Otherwise → fix mode (no new commits yet)
-      LAST_RC_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-        --json comments \
-        --jq '[.comments[] | select(.body | contains("RALPH-REVIEW: REQUEST_CHANGES"))] | last | .createdAt // ""' \
-        < /dev/null 2>/dev/null || echo "")
-      LATEST_COMMIT_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-        --json commits \
-        --jq '.commits | last | .committedDate // ""' \
-        < /dev/null 2>/dev/null || echo "")
-
-      if [[ -n "$LATEST_COMMIT_TIME" && -n "$LAST_RC_TIME" && "$LATEST_COMMIT_TIME" > "$LAST_RC_TIME" ]]; then
-        MODE="review-round2"
-      else
-        MODE="fix"
-      fi
-    else
-      MODE="review"
-    fi
-
-    echo "  ▶  Mode: $MODE  (PR #$PR_NUMBER)"
-  else
-    echo "  🔍 No open ralph PRs — checking issues…"
-
-    # Pick highest-priority open issue: high-priority label first, then lowest number.
-    # PRD mode: --label scopes to prd/<label>; exclude the PRD issue itself (prd) and blocked.
-    # Standalone mode: no label filter; additionally exclude any issue carrying a prd/* label.
-    if [[ -n "$FEATURE_LABEL" ]]; then
-      ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
-        --label "$FEATURE_LABEL" \
-        --json number,labels --limit 100 \
-        --jq '
-          [.[] | select(.labels | map(.name) | (any(. == "prd") or any(. == "blocked")) | not)]
-          | (
-              (map(select(.labels | map(.name) | any(. == "high priority"))) | sort_by(.number) | first)
-              // (sort_by(.number) | first)
-            )
-          | .number // empty
-        ' \
-        < /dev/null 2>/dev/null || echo "")
-    else
-      ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
-        --json number,labels --limit 100 \
-        --jq '
-          [.[] | select(.labels | map(.name) | (any(. == "prd") or any(startswith("prd/")) or any(. == "blocked")) | not)]
-          | (
-              (map(select(.labels | map(.name) | any(. == "high priority"))) | sort_by(.number) | first)
-              // (sort_by(.number) | first)
-            )
-          | .number // empty
-        ' \
-        < /dev/null 2>/dev/null || echo "")
-    fi
-
-    if [[ -n "$ISSUE_NUMBER" ]]; then
-      MODE="implement"
-      echo "  ▶  Mode: $MODE  (Issue #$ISSUE_NUMBER)"
-    elif [[ -n "$FEATURE_LABEL" && "$FEATURE_BRANCH" != "main" ]]; then
-      # PRD mode with no remaining task issues — check for an existing feat→main PR
-      FEATURE_PR_COUNT=$(gh pr list --repo "$REPO" --state open \
-        --base "main" \
-        --head "$FEATURE_BRANCH" \
-        --json number --jq 'length' \
-        < /dev/null 2>/dev/null)
-
-      if [[ "$FEATURE_PR_COUNT" == "0" ]]; then
-        MODE="feature-pr"
-        echo "  ▶  Mode: $MODE  (all task issues closed, opening feat→main PR)"
-      else
-        MODE="complete"
-        echo "  ▶  Mode: $MODE  (feat→main PR already open or check failed)"
-      fi
-    else
-      MODE="complete"
-      echo "  ▶  Mode: $MODE  (no open issues or PRs)"
-    fi
-  fi
-}
+# shellcheck source=lib/routing.sh
+source "$SCRIPT_DIR/lib/routing.sh"
 
 # Loads the mode file and substitutes {{REPO}}, {{PR_NUMBER}}, {{ISSUE_NUMBER}}.
 build_prompt() {
@@ -311,7 +211,14 @@ build_prompt() {
   PROMPT="${PROMPT//\{\{TEST_CMD\}\}/$TEST_CMD}"
   PROMPT="${PROMPT//\{\{FEATURE_BRANCH\}\}/$FEATURE_BRANCH}"
   PROMPT="${PROMPT//\{\{FEATURE_LABEL\}\}/$FEATURE_LABEL}"
+  PROMPT="${PROMPT//\{\{REVIEW_BACKEND\}\}/$REVIEW_BACKEND}"
+  PROMPT="${PROMPT//\{\{UPSTREAM_REPO\}\}/$UPSTREAM_REPO}"
+  PROMPT="${PROMPT//\{\{FORK_OWNER\}\}/$FORK_OWNER}"
 }
+
+# ── Startup detection ─────────────────────────────────────────────────────────
+
+detect_review_backend
 
 # ── Main loop ──────────────────────────────────────────────────────────────────
 

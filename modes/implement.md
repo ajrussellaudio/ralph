@@ -59,6 +59,17 @@ If the checks passed:
 
 Do **not** close the GitHub issue manually — it closes automatically when the PR is merged.
 
+## Step 4b — Request Copilot review (bot path only)
+
+**Only if `{{REVIEW_BACKEND}}` is `copilot`:** immediately after opening the PR, request a Copilot review:
+
+```bash
+gh api "/repos/{{REPO}}/pulls/<PR_NUMBER>/requested_reviewers" \
+  -X POST -f "reviewers[]=copilot-pull-request-reviewer[bot]" < /dev/null
+```
+
+Replace `<PR_NUMBER>` with the actual PR number returned by the `gh pr create` command above. Skip this step entirely if `{{REVIEW_BACKEND}}` is `comments`.
+
 ## Step 5 — Stop
 
 Your work this iteration is done.
