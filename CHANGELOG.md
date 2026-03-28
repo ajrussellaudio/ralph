@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `--max-iterations=N` optional named flag to `ralph.sh`; when omitted Ralph runs in an unlimited `while true` loop until a clean exit condition is reached (#89)
+- Migration error message when a bare positional integer is passed (old interface): `"The positional <max_iterations> argument has been removed. Use --max-iterations=N instead."` (#89)
+- `RALPH_PARSE_ONLY=1` test hook in `ralph.sh` to allow arg-parsing bats tests without requiring a full preflight environment (#89)
+- `test/arg-parsing.bats`: 9 bats tests covering all arg-parsing scenarios for the new `--max-iterations` flag (#89)
+
+### Changed
+- Removed mandatory positional `<max_iterations>` argument from `ralph.sh`; `--max-iterations=N` is now optional (#89)
+- Terminal header shows `Max iterations: unlimited` when no cap is set, `Max iterations: N` when `--max-iterations=N` is passed (#89)
+- Iteration counter shows `iteration N` when uncapped, `iteration N / M` when capped (#89)
+- `usage()` function updated to reflect the new interface (#89)
+- README usage examples updated to show the new `--max-iterations=N` flag (#89)
+
 ### Changed
 - `review.md` now reads all prior `<!-- RALPH-REVIEW: REQUEST_CHANGES -->` and `<!-- RALPH-FIX: RESPONSE -->` comments before delegating to the review sub-agent, providing full multi-round context (#86)
 - After a fix (new commits pushed after a `REQUEST_CHANGES` comment), `determine_mode()` HTML path now routes to `review` instead of `review-round2` (#86)

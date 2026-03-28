@@ -2,11 +2,12 @@
 # Ralph — Long-running Copilot CLI agent loop with bash-side mode routing
 #
 # Usage:
-#   ./ralph.sh <max_iterations> [--label=<label>]
+#   ./ralph.sh [--max-iterations=N] [--label=<label>] [--issue=<N>]
 #
 # Examples:
-#   ./ralph.sh 20
-#   ./ralph.sh 20 --label=foo-widget
+#   ./ralph.sh --label=foo-widget
+#   ./ralph.sh --max-iterations=20 --label=foo-widget
+#   ./ralph.sh --max-iterations=20 --issue=82
 #
 # Each iteration:
 #   1. Checks GitHub for open ralph PRs or open issues (in bash)
@@ -71,45 +72,43 @@ FORK_OWNER="${REPO%%/*}"
 # ── Argument validation ────────────────────────────────────────────────────────
 
 usage() {
-  echo "Usage: $(basename "$0") <max_iterations> [--label=<label>] [--issue=<N>]"
+  echo "Usage: $(basename "$0") [--max-iterations=N] [--label=<label>] [--issue=<N>]"
   echo ""
-  echo "  max_iterations  A positive integer — how many Copilot iterations to"
-  echo "                  allow before giving up. There is no default; you must"
-  echo "                  decide how many loops is reasonable for your task."
+  echo "  --max-iterations=N  Optional positive integer — how many Copilot iterations"
+  echo "                      to allow before giving up. When omitted, Ralph runs"
+  echo "                      indefinitely until a clean exit condition is reached."
   echo ""
-  echo "  --label=<label> Optional feature label. Derives FEATURE_BRANCH=feat/<label>"
-  echo "                  and FEATURE_LABEL=prd/<label>. When omitted, FEATURE_BRANCH"
-  echo "                  defaults to 'main'."
+  echo "  --label=<label>     Optional feature label. Derives FEATURE_BRANCH=feat/<label>"
+  echo "                      and FEATURE_LABEL=prd/<label>. When omitted, FEATURE_BRANCH"
+  echo "                      defaults to 'main'."
   echo ""
-  echo "  --issue=<N>     Optional issue number. When set, Ralph skips normal issue"
-  echo "                  routing and implements only that specific issue. After the"
-  echo "                  issue is merged, Ralph exits cleanly without opening a"
-  echo "                  feature PR."
+  echo "  --issue=<N>         Optional issue number. When set, Ralph skips normal issue"
+  echo "                      routing and implements only that specific issue. After the"
+  echo "                      issue is merged, Ralph exits cleanly without opening a"
+  echo "                      feature PR."
   echo ""
   echo "Examples:"
-  echo "  $(basename "$0") 20"
-  echo "  $(basename "$0") 20 --label=foo-widget"
-  echo "  $(basename "$0") 20 --issue=82"
-  echo "  $(basename "$0") 20 --issue=82 --label=foo-widget"
+  echo "  $(basename "$0")"
+  echo "  $(basename "$0") --label=foo-widget"
+  echo "  $(basename "$0") --max-iterations=20 --label=foo-widget"
+  echo "  $(basename "$0") --max-iterations=20 --issue=82 --label=foo-widget"
 }
 
-if [[ $# -lt 1 || $# -gt 3 ]]; then
-  usage
-  exit 1
-fi
-
-if ! [[ "$1" =~ ^[1-9][0-9]*$ ]]; then
-  usage
-  exit 1
-fi
-
-MAX_ITERATIONS="$1"
+MAX_ITERATIONS=""
 FEATURE_LABEL=""
 FEATURE_BRANCH="main"
 PINNED_ISSUE=""
 
-for arg in "${@:2}"; do
-  if [[ "$arg" =~ ^--label=(.+)$ ]]; then
+for arg in "$@"; do
+  if [[ "$arg" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Error: The positional <max_iterations> argument has been removed. Use --max-iterations=N instead."
+    exit 1
+  elif [[ "$arg" =~ ^--max-iterations=([1-9][0-9]*)$ ]]; then
+    MAX_ITERATIONS="${BASH_REMATCH[1]}"
+  elif [[ "$arg" =~ ^--max-iterations(=.*)?$ ]]; then
+    usage
+    exit 1
+  elif [[ "$arg" =~ ^--label=(.+)$ ]]; then
     FEATURE_LABEL="prd/${BASH_REMATCH[1]}"
     FEATURE_BRANCH="feat/${BASH_REMATCH[1]}"
   elif [[ "$arg" =~ ^--issue=([1-9][0-9]*)$ ]]; then
@@ -119,6 +118,15 @@ for arg in "${@:2}"; do
     exit 1
   fi
 done
+
+# Test hook: exit 0 after successful arg parsing so bats tests can verify
+# arg handling without requiring a full preflight environment.
+if [[ "${RALPH_PARSE_ONLY:-}" == "1" ]]; then
+  echo "MAX_ITERATIONS=${MAX_ITERATIONS}"
+  echo "FEATURE_BRANCH=${FEATURE_BRANCH}"
+  echo "PINNED_ISSUE=${PINNED_ISSUE}"
+  exit 0
+fi
 
 # ── Preflight checks ───────────────────────────────────────────────────────────
 
@@ -274,20 +282,34 @@ detect_review_backend
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║  Ralph — Copilot agentic loop                                ║"
-echo "║  Max iterations: $MAX_ITERATIONS$(printf '%*s' $((46 - ${#MAX_ITERATIONS})) '')║"
+if [[ -n "$MAX_ITERATIONS" ]]; then
+  echo "║  Max iterations: $MAX_ITERATIONS$(printf '%*s' $((46 - ${#MAX_ITERATIONS})) '')║"
+else
+  echo "║  Max iterations: unlimited                                   ║"
+fi
 echo "╚══════════════════════════════════════════════════════════════╝"
 
-for i in $(seq 1 "$MAX_ITERATIONS"); do
+run_loop() {
+  local i="$1"
   echo ""
   printf "\033[1;36m"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  🤖 Ralph — iteration $i / $MAX_ITERATIONS"
+  if [[ -n "$MAX_ITERATIONS" ]]; then
+    echo "  🤖 Ralph — iteration $i / $MAX_ITERATIONS"
+  else
+    echo "  🤖 Ralph — iteration $i"
+  fi
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   printf "\033[0m"
 
   # Update terminal tab/window title and tmux window name.
-  printf "\033]0;🤖 Ralph — iteration %s / %s\007" "$i" "$MAX_ITERATIONS"
-  printf "\033k🤖 Ralph %s/%s\033\\" "$i" "$MAX_ITERATIONS"
+  if [[ -n "$MAX_ITERATIONS" ]]; then
+    printf "\033]0;🤖 Ralph — iteration %s / %s\007" "$i" "$MAX_ITERATIONS"
+    printf "\033k🤖 Ralph %s/%s\033\\" "$i" "$MAX_ITERATIONS"
+  else
+    printf "\033]0;🤖 Ralph — iteration %s\007" "$i"
+    printf "\033k🤖 Ralph %s\033\\" "$i"
+  fi
 
   MODE=""
   determine_mode
@@ -297,7 +319,11 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
     echo ""
     printf "\033[1;32m"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  ✅  Ralph completed all tasks at iteration $i / $MAX_ITERATIONS"
+    if [[ -n "$MAX_ITERATIONS" ]]; then
+      echo "  ✅  Ralph completed all tasks at iteration $i / $MAX_ITERATIONS"
+    else
+      echo "  ✅  Ralph completed all tasks at iteration $i"
+    fi
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     printf "\033[0m"
     exit 0
@@ -319,7 +345,11 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
     echo ""
     printf "\033[1;32m"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  ✅  Ralph completed all tasks at iteration $i / $MAX_ITERATIONS"
+    if [[ -n "$MAX_ITERATIONS" ]]; then
+      echo "  ✅  Ralph completed all tasks at iteration $i / $MAX_ITERATIONS"
+    else
+      echo "  ✅  Ralph completed all tasks at iteration $i"
+    fi
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     printf "\033[0m"
     exit 0
@@ -327,13 +357,31 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
 
   if echo "$OUTPUT" | grep -q "<promise>STOP</promise>"; then
     echo ""
-    echo "  ✔  Iteration $i / $MAX_ITERATIONS done — restarting"
+    if [[ -n "$MAX_ITERATIONS" ]]; then
+      echo "  ✔  Iteration $i / $MAX_ITERATIONS done — restarting"
+    else
+      echo "  ✔  Iteration $i done — restarting"
+    fi
   fi
 
-  echo ""
-  echo "  Iteration $i done. $(( MAX_ITERATIONS - i )) iteration(s) remaining."
+  if [[ -n "$MAX_ITERATIONS" ]]; then
+    echo ""
+    echo "  Iteration $i done. $(( MAX_ITERATIONS - i )) iteration(s) remaining."
+  fi
   sleep 2
-done
+}
+
+if [[ -n "$MAX_ITERATIONS" ]]; then
+  for i in $(seq 1 "$MAX_ITERATIONS"); do
+    run_loop "$i"
+  done
+else
+  i=0
+  while true; do
+    i=$(( i + 1 ))
+    run_loop "$i"
+  done
+fi
 
 # ── Max iterations reached ─────────────────────────────────────────────────────
 
