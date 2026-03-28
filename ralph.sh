@@ -47,7 +47,7 @@ fi
 toml_get() {
   [[ -n "$CONFIG_FILE" ]] || return 0
   grep -E "^$1 *=" "$CONFIG_FILE" \
-    | sed -E 's/^[^=]+= *"?([^"]*)"? *$/\1/'
+    | sed -E 's/^[^=]+= *"?([^"]*)"? *$/\1/' || true
 }
 
 BUILD_CMD=$(toml_get build)
