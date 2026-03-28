@@ -181,6 +181,29 @@ fi
 
 git -C "$GIT_ROOT" worktree add --detach "$WORKTREE_DIR" "origin/$FEATURE_BRANCH"
 
+# ── Review backend detection ───────────────────────────────────────────────────
+
+# Queries the GitHub API for apps installed on the repo and sets REVIEW_BACKEND
+# to 'copilot' if copilot-pull-request-reviewer is present, otherwise 'comments'.
+# Defaults to 'comments' if the API call fails for any reason.
+detect_review_backend() {
+  echo "  🔍 Detecting review backend…"
+
+  local found
+  found=$(gh api "/repos/${REPO}/apps" \
+    --jq '[.[].slug] | any(. == "copilot-pull-request-reviewer")' 2>/dev/null || echo "false")
+
+  if [[ "$found" == "true" ]]; then
+    REVIEW_BACKEND="copilot"
+    echo "  🤖 Review backend: copilot"
+  else
+    REVIEW_BACKEND="comments"
+    echo "  💬 Review backend: comments"
+  fi
+
+  export REVIEW_BACKEND
+}
+
 # ── Routing ────────────────────────────────────────────────────────────────────
 
 # Populates MODE, PR_NUMBER, ISSUE_NUMBER based on current GitHub state.
@@ -312,6 +335,10 @@ build_prompt() {
   PROMPT="${PROMPT//\{\{FEATURE_BRANCH\}\}/$FEATURE_BRANCH}"
   PROMPT="${PROMPT//\{\{FEATURE_LABEL\}\}/$FEATURE_LABEL}"
 }
+
+# ── Startup detection ─────────────────────────────────────────────────────────
+
+detect_review_backend
 
 # ── Main loop ──────────────────────────────────────────────────────────────────
 

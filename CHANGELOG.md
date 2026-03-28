@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `detect_review_backend()` function in `ralph.sh` that queries the GitHub API at startup, sets `REVIEW_BACKEND` to `copilot` when `copilot-pull-request-reviewer` is installed on the repo, and defaults to `comments` on any API failure or when the app is absent (#76)
+- `REVIEW_BACKEND` global exported at startup so all subsequent functions in the run can consume it (#76)
 - Escalation logic in `ralph-ext.sh`: when `fix_count >= 10`, labels the PR `needs-human-review`, posts an explanatory comment, and sets the project item status to "Blocked" (#68)
 - `escalate_pr()` shell function orchestrating PR labeling, commenting, and project status update on fix threshold breach (#68)
 - `ensure_label()` shell function for idempotent label creation on the repo (#68)
