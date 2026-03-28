@@ -18,6 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `modes/wait.md`: new mode that emits STOP so the outer loop retries on the next iteration while awaiting a Copilot bot review (#77)
 - `modes/fix-bot.md`: new mode that reads all inline `copilot-pull-request-reviewer[bot]` comments, fixes them in one pass, commits, pushes, posts a fix-round marker comment, and re-requests Copilot review (#77)
 - `{{REVIEW_BACKEND}}` placeholder substitution in `build_prompt()` so mode files can act conditionally on the review backend (#77)
+- `lib/routing.sh` extracts `detect_review_backend()` and `determine_mode()` from `ralph.sh` into a separately sourceable library, enabling unit testing (#81)
+- `test/routing.bats`: bats tests covering all 3 `detect_review_backend()` cases and the full 12-case `determine_mode()` routing matrix for both `REVIEW_BACKEND=copilot` and `REVIEW_BACKEND=comments`, using a mock `gh` binary in `test/helpers/` (#81)
 - `implement.md` Step 4b: requests a Copilot review immediately after opening the PR when `REVIEW_BACKEND=copilot` (#77)
 - `escalate_pr()` shell function orchestrating PR labeling, commenting, and project status update on fix threshold breach (#68)
 - `ensure_label()` shell function for idempotent label creation on the repo (#68)
