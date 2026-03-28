@@ -227,36 +227,64 @@ determine_mode() {
   if [[ "$PR_COUNT" -gt 0 ]]; then
     PR_NUMBER=$(echo "$OPEN_RALPH_PRS" | jq -r '.[0].number')
 
-    COMMENT_BODIES=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-      --json comments --jq '[.comments[].body] | join("\n---\n")' \
-      < /dev/null 2>/dev/null || echo "")
-
-    APPROVED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: APPROVED" 2>/dev/null || true)
-    CHANGES_REQUESTED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: REQUEST_CHANGES" 2>/dev/null || true)
-
-    if [[ "${APPROVED:-0}" -gt 0 ]]; then
-      MODE="merge"
-    elif [[ "${CHANGES_REQUESTED:-0}" -ge 2 ]]; then
-      MODE="force-approve"
-    elif [[ "${CHANGES_REQUESTED:-0}" -eq 1 ]]; then
-      # If commits were pushed after the REQUEST_CHANGES comment → round 2 review
-      # Otherwise → fix mode (no new commits yet)
-      LAST_RC_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+    if [[ "$REVIEW_BACKEND" == "copilot" ]]; then
+      # Copilot bot review path: query review state instead of HTML comment sentinels.
+      FIX_COUNT=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
         --json comments \
-        --jq '[.comments[] | select(.body | contains("RALPH-REVIEW: REQUEST_CHANGES"))] | last | .createdAt // ""' \
-        < /dev/null 2>/dev/null || echo "")
-      LATEST_COMMIT_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-        --json commits \
-        --jq '.commits | last | .committedDate // ""' \
+        --jq '[.comments[] | select(.body | contains("<!-- RALPH-FIX-BOT: RESPONSE -->"))] | length' \
+        < /dev/null 2>/dev/null || echo "0")
+
+      COPILOT_REVIEW_STATE=$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}/reviews" \
+        --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | last | .state // ""' \
         < /dev/null 2>/dev/null || echo "")
 
-      if [[ -n "$LATEST_COMMIT_TIME" && -n "$LAST_RC_TIME" && "$LATEST_COMMIT_TIME" > "$LAST_RC_TIME" ]]; then
-        MODE="review-round2"
+      if [[ -z "$COPILOT_REVIEW_STATE" ]]; then
+        MODE="wait"
+      elif [[ "$COPILOT_REVIEW_STATE" == "APPROVED" ]]; then
+        MODE="merge"
+      elif [[ "$COPILOT_REVIEW_STATE" == "CHANGES_REQUESTED" ]]; then
+        if [[ "${FIX_COUNT:-0}" -lt 10 ]]; then
+          MODE="fix-bot"
+        else
+          MODE="escalate"
+        fi
       else
-        MODE="fix"
+        # COMMENTED or other non-terminal state — review not yet complete
+        MODE="wait"
       fi
     else
-      MODE="review"
+      # HTML comment sentinel path (existing logic).
+      COMMENT_BODIES=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+        --json comments --jq '[.comments[].body] | join("\n---\n")' \
+        < /dev/null 2>/dev/null || echo "")
+
+      APPROVED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: APPROVED" 2>/dev/null || true)
+      CHANGES_REQUESTED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: REQUEST_CHANGES" 2>/dev/null || true)
+
+      if [[ "${APPROVED:-0}" -gt 0 ]]; then
+        MODE="merge"
+      elif [[ "${CHANGES_REQUESTED:-0}" -ge 2 ]]; then
+        MODE="force-approve"
+      elif [[ "${CHANGES_REQUESTED:-0}" -eq 1 ]]; then
+        # If commits were pushed after the REQUEST_CHANGES comment → round 2 review
+        # Otherwise → fix mode (no new commits yet)
+        LAST_RC_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+          --json comments \
+          --jq '[.comments[] | select(.body | contains("RALPH-REVIEW: REQUEST_CHANGES"))] | last | .createdAt // ""' \
+          < /dev/null 2>/dev/null || echo "")
+        LATEST_COMMIT_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+          --json commits \
+          --jq '.commits | last | .committedDate // ""' \
+          < /dev/null 2>/dev/null || echo "")
+
+        if [[ -n "$LATEST_COMMIT_TIME" && -n "$LAST_RC_TIME" && "$LATEST_COMMIT_TIME" > "$LAST_RC_TIME" ]]; then
+          MODE="review-round2"
+        else
+          MODE="fix"
+        fi
+      else
+        MODE="review"
+      fi
     fi
 
     echo "  ▶  Mode: $MODE  (PR #$PR_NUMBER)"
@@ -334,6 +362,7 @@ build_prompt() {
   PROMPT="${PROMPT//\{\{TEST_CMD\}\}/$TEST_CMD}"
   PROMPT="${PROMPT//\{\{FEATURE_BRANCH\}\}/$FEATURE_BRANCH}"
   PROMPT="${PROMPT//\{\{FEATURE_LABEL\}\}/$FEATURE_LABEL}"
+  PROMPT="${PROMPT//\{\{REVIEW_BACKEND\}\}/$REVIEW_BACKEND}"
 }
 
 # ── Startup detection ─────────────────────────────────────────────────────────
