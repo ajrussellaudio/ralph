@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- `toml_get` no longer silently exits the script when a TOML key is missing; appended `|| true` to the `grep | sed` pipeline so a no-match is not fatal under `set -euo pipefail` (#82)
+
 ### Added
 - Draft PR opened automatically on GitHub when `ralph.sh` creates a new feature branch (`feat/`), giving instant visibility that work has started; skipped when resuming an existing branch (#98)
 - `feature-pr` mode now detects an existing draft PR for the feature branch, updates its title and body with the full feature summary, and promotes it from draft to ready-for-review using `gh pr ready`; falls back to creating a new PR if no draft exists (#98)
