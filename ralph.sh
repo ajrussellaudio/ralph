@@ -229,24 +229,37 @@ determine_mode() {
 
     if [[ "$REVIEW_BACKEND" == "copilot" ]]; then
       # Copilot bot review path: query review state instead of HTML comment sentinels.
-      FIX_COUNT=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+      COPILOT_FIX_COMMENTS=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
         --json comments \
-        --jq '[.comments[] | select(.body | contains("<!-- RALPH-FIX-BOT: RESPONSE -->"))] | length' \
-        < /dev/null 2>/dev/null || echo "0")
+        --jq '[.comments[] | select(.body | contains("<!-- RALPH-FIX-BOT: RESPONSE -->"))]' \
+        < /dev/null 2>/dev/null || echo "[]")
 
-      COPILOT_REVIEW_STATE=$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}/reviews" \
-        --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | last | .state // ""' \
-        < /dev/null 2>/dev/null || echo "")
+      FIX_COUNT=$(echo "$COPILOT_FIX_COMMENTS" | jq 'length')
+      LAST_FIX_TIME=$(echo "$COPILOT_FIX_COMMENTS" | jq -r 'last | .createdAt // ""')
+
+      COPILOT_REVIEW_JSON=$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}/reviews" \
+        --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | last | {state: (.state // ""), submitted_at: (.submitted_at // "")}' \
+        < /dev/null 2>/dev/null || echo '{"state":"","submitted_at":""}')
+
+      COPILOT_REVIEW_STATE=$(echo "$COPILOT_REVIEW_JSON" | jq -r '.state')
+      LAST_BOT_REVIEW_TIME=$(echo "$COPILOT_REVIEW_JSON" | jq -r '.submitted_at')
 
       if [[ -z "$COPILOT_REVIEW_STATE" ]]; then
         MODE="wait"
       elif [[ "$COPILOT_REVIEW_STATE" == "APPROVED" ]]; then
         MODE="merge"
       elif [[ "$COPILOT_REVIEW_STATE" == "CHANGES_REQUESTED" ]]; then
-        if [[ "${FIX_COUNT:-0}" -lt 10 ]]; then
+        # If a fix-bot response was posted after the last review, treat the old
+        # review as addressed and wait for a new one.
+        if [[ -n "$LAST_FIX_TIME" && "$LAST_FIX_TIME" > "$LAST_BOT_REVIEW_TIME" ]]; then
+          MODE="wait"
+        elif [[ "${FIX_COUNT:-0}" -lt 10 ]]; then
           MODE="fix-bot"
-        else
+        elif [[ -f "${MODES_DIR}/escalate.md" ]]; then
           MODE="escalate"
+        else
+          echo "  ⚠️  FIX_COUNT >= 10 but modes/escalate.md not found — falling back to wait"
+          MODE="wait"
         fi
       else
         # COMMENTED or other non-terminal state — review not yet complete

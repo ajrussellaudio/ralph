@@ -48,15 +48,15 @@ git push origin <branch-name>
 Post a `<!-- RALPH-FIX-BOT: RESPONSE -->` comment so the outer loop can count fix rounds:
 
 ```bash
-cat > /tmp/ralph-fix-bot-response.md << 'EOF'
+cat > /tmp/ralph-fix-bot-response-{{PR_NUMBER}}.md << 'EOF'
 <!-- RALPH-FIX-BOT: RESPONSE -->
 
 Addressed all Copilot bot review comments. Pushed fixes and re-requesting review.
 
 — Ralph 🤖
 EOF
-gh pr comment {{PR_NUMBER}} --repo {{REPO}} --body-file /tmp/ralph-fix-bot-response.md < /dev/null
-rm /tmp/ralph-fix-bot-response.md
+gh pr comment {{PR_NUMBER}} --repo {{REPO}} --body-file /tmp/ralph-fix-bot-response-{{PR_NUMBER}}.md < /dev/null
+rm /tmp/ralph-fix-bot-response-{{PR_NUMBER}}.md
 ```
 
 ## Step 6 — Re-request Copilot review
