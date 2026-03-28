@@ -8,8 +8,16 @@ Each iteration Ralph:
 1. Syncs to `origin/$FEATURE_BRANCH` (defaults to `origin/main`)
 2. Checks for open PRs to review, fix, or merge
 3. If none, picks the most important open issue and implements it
-4. Opens a PR and stops — the next iteration reviews it
-5. Emits `<promise>COMPLETE</promise>` when all issues are closed and all PRs are merged
+4. Pushes a draft PR (or updates an existing one) and stops — the next iteration reviews it
+5. Loops the review → fix cycle until the code is approved or a force-approve threshold is reached
+6. Merges, then moves on to the next issue
+7. Emits `<promise>COMPLETE</promise>` when all issues are closed and all PRs are merged
+
+### Review backend
+
+Ralph auto-detects how to post reviews:
+- **GitHub Copilot bot** — if the Copilot code-review bot is installed on the repo, Ralph delegates review to it and waits for its verdict
+- **HTML comments** — otherwise Ralph posts its own review as an HTML comment on the PR (`<!-- RALPH-REVIEW: APPROVED -->` / `<!-- RALPH-REVIEW: REQUEST_CHANGES -->`)
 
 ## Setup
 
@@ -49,9 +57,13 @@ Each iteration Ralph:
 3. **Run from your project root:**
    ```bash
    ralph
-   # or, to work within a feature branch:
+   # work within a feature branch (scoped to issues labelled prd/foo-widget):
    ralph --label=foo-widget
-   # or, to cap the number of iterations:
+   # target a single specific issue by number:
+   ralph --issue=42
+   # combine: implement issue #42 on the foo-widget feature branch:
+   ralph --issue=42 --label=foo-widget
+   # cap the number of iterations (runs unlimited by default):
    ralph --max-iterations=20 --label=foo-widget
    ```
    Ralph runs indefinitely by default, stopping only when all tasks are complete.
@@ -76,6 +88,7 @@ Each iteration Ralph:
 | `install.sh` | Symlinks `ralph.sh` into `~/.local/bin/` for global access |
 | `modes/` | Per-mode agent prompts (`implement.md`, `review.md`, `fix.md`, `merge.md`, etc.) |
 | `project.example.toml` | Annotated template — copy to `ralph.toml` in your project root and fill in |
+| `docs/routing.md` | Mermaid flowcharts showing Ralph's routing logic and task lifecycle |
 
 ## Customising modes
 
@@ -110,8 +123,11 @@ When `upstream` is **not** set, behaviour is identical to today.
 
 
 
+## Stopping conditions
+
 Ralph stops automatically when:
 - All open issues are closed and all ralph PRs are merged (emits `COMPLETE`)
-- The maximum iteration count is reached
+- The maximum iteration count is reached (if `--max-iterations=N` was given)
+- A single `--issue=N` completes (Ralph exits after that issue is done)
 
 You can also press `Ctrl-C` at any time — the worktree is cleaned up automatically.
