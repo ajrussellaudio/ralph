@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- `merge.md` now uses `gh pr merge --squash --delete-branch` so per-task PRs are squash-merged into the feature branch and the `ralph/issue-N` remote branch is deleted after merge (#79)
+
 ### Added
 - `modes/escalate.md`: new mode that ensures the `needs-human-review` label exists, labels the PR `needs-human-review`, labels the originating issue `blocked`, posts an explanatory comment on the PR, and emits STOP so the outer loop skips to the next unblocked task (#78)
 - `detect_review_backend()` function in `ralph.sh` that queries the GitHub API at startup, sets `REVIEW_BACKEND` to `copilot` when `copilot-pull-request-reviewer` is installed on the repo, and defaults to `comments` on any API failure or when the app is absent (#76)
