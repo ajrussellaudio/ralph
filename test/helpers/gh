@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Mock gh CLI for bats tests.
+#
+# Routes calls based on command/subcommand, applies any --jq filter via real jq,
+# and reads response data from MOCK_* environment variables:
+#
+#   MOCK_APPS_RESPONSE            JSON for: gh api .../apps
+#   MOCK_APPS_EXIT                Non-zero exit code to simulate API failure
+#   MOCK_REVIEWS_RESPONSE         JSON for: gh api .../reviews
+#   MOCK_PR_LIST_RESPONSE         JSON for: gh pr list  (ralph branch PRs)
+#   MOCK_FEATURE_PR_LIST_RESPONSE JSON for: gh pr list --head <branch>  (feat PR check)
+#   MOCK_PR_VIEW_COMMENTS_RESPONSE  JSON for: gh pr view --json comments
+#   MOCK_PR_VIEW_COMMITS_RESPONSE   JSON for: gh pr view --json commits
+#   MOCK_ISSUE_LIST_RESPONSE      JSON for: gh issue list
+
+set -euo pipefail
+
+JQ_FILTER=""
+JSON_FIELDS=""
+HAS_HEAD="false"
+POSITIONAL=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --jq)     JQ_FILTER="$2";   shift 2 ;;
+    --json)   JSON_FIELDS="$2"; shift 2 ;;
+    --head)   HAS_HEAD="true";  shift 2 ;;
+    --repo|--base|--state|--label|--limit) shift 2 ;;
+    *)        POSITIONAL+=("$1"); shift ;;
+  esac
+done
+
+apply_jq() {
+  local data="$1"
+  if [[ -n "$JQ_FILTER" ]]; then
+    printf '%s' "$data" | jq -r "$JQ_FILTER"
+  else
+    printf '%s\n' "$data"
+  fi
+}
+
+# Avoid ${VAR:-{...}} patterns — the } in the default closes ${...} early in bash.
+# Use intermediate variables so the } in the default value is expanded safely.
+_default_obj='{"comments":[]}'
+_default_commits='{"commits":[]}'
+MOCK_APPS_RESPONSE="${MOCK_APPS_RESPONSE:-[]}"
+MOCK_REVIEWS_RESPONSE="${MOCK_REVIEWS_RESPONSE:-[]}"
+MOCK_PR_LIST_RESPONSE="${MOCK_PR_LIST_RESPONSE:-[]}"
+MOCK_FEATURE_PR_LIST_RESPONSE="${MOCK_FEATURE_PR_LIST_RESPONSE:-[]}"
+MOCK_PR_VIEW_COMMENTS_RESPONSE="${MOCK_PR_VIEW_COMMENTS_RESPONSE:-$_default_obj}"
+MOCK_PR_VIEW_COMMITS_RESPONSE="${MOCK_PR_VIEW_COMMITS_RESPONSE:-$_default_commits}"
+MOCK_ISSUE_LIST_RESPONSE="${MOCK_ISSUE_LIST_RESPONSE:-[]}"
+
+CMD="${POSITIONAL[0]:-}"
+SUBCMD="${POSITIONAL[1]:-}"
+
+case "$CMD" in
+  api)
+    ENDPOINT="$SUBCMD"
+    if [[ "$ENDPOINT" == *"/apps" ]]; then
+      [[ "${MOCK_APPS_EXIT:-0}" == "0" ]] || exit "${MOCK_APPS_EXIT}"
+      apply_jq "$MOCK_APPS_RESPONSE"
+    elif [[ "$ENDPOINT" == *"/reviews" ]]; then
+      apply_jq "$MOCK_REVIEWS_RESPONSE"
+    fi
+    ;;
+  pr)
+    case "$SUBCMD" in
+      list)
+        if [[ "$HAS_HEAD" == "true" ]]; then
+          apply_jq "$MOCK_FEATURE_PR_LIST_RESPONSE"
+        else
+          apply_jq "$MOCK_PR_LIST_RESPONSE"
+        fi
+        ;;
+      view)
+        if [[ "$JSON_FIELDS" == "commits" ]]; then
+          apply_jq "$MOCK_PR_VIEW_COMMITS_RESPONSE"
+        else
+          apply_jq "$MOCK_PR_VIEW_COMMENTS_RESPONSE"
+        fi
+        ;;
+    esac
+    ;;
+  issue)
+    case "$SUBCMD" in
+      list)
+        apply_jq "$MOCK_ISSUE_LIST_RESPONSE"
+        ;;
+    esac
+    ;;
+esac
