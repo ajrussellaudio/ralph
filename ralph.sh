@@ -220,7 +220,7 @@ if [[ "$FEATURE_BRANCH" != "main" ]]; then
       --repo "$UPSTREAM_REPO" \
       --base main \
       --head "${FORK_OWNER}:${FEATURE_BRANCH}" \
-      --title "feat/: work in progress" \
+      --title "${FEATURE_BRANCH}: work in progress" \
       --body-file "$DRAFT_PR_BODY_FILE" \
       --draft \
       < /dev/null && echo "  🚀  Draft PR opened for ${FEATURE_BRANCH}." || echo "  ⚠️   Could not open draft PR (non-fatal)."
