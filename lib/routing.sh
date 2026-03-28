@@ -125,10 +125,22 @@ determine_mode() {
   else
     echo "  🔍 No open ralph PRs — checking issues…"
 
+    if [[ -n "${PINNED_ISSUE:-}" ]]; then
+      # Single-issue mode: check if the pinned issue is still open.
+      PINNED_STATE=$(gh issue view "$PINNED_ISSUE" --repo "$REPO" --json state \
+        --jq '.state' < /dev/null 2>/dev/null || echo "")
+      if [[ "$PINNED_STATE" == "CLOSED" ]]; then
+        MODE="complete"
+        echo "  ▶  Mode: $MODE  (pinned issue #${PINNED_ISSUE} is closed)"
+      else
+        ISSUE_NUMBER="$PINNED_ISSUE"
+        MODE="implement"
+        echo "  ▶  Mode: $MODE  (Issue #$ISSUE_NUMBER)"
+      fi
     # Pick highest-priority open issue: high-priority label first, then lowest number.
     # PRD mode: --label scopes to prd/<label>; exclude the PRD issue itself (prd) and blocked.
     # Standalone mode: no label filter; additionally exclude any issue carrying a prd/* label.
-    if [[ -n "$FEATURE_LABEL" ]]; then
+    elif [[ -n "$FEATURE_LABEL" ]]; then
       ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
         --label "$FEATURE_LABEL" \
         --json number,labels --limit 100 \
@@ -155,27 +167,31 @@ determine_mode() {
         < /dev/null 2>/dev/null || echo "")
     fi
 
-    if [[ -n "$ISSUE_NUMBER" ]]; then
-      MODE="implement"
-      echo "  ▶  Mode: $MODE  (Issue #$ISSUE_NUMBER)"
-    elif [[ -n "$FEATURE_LABEL" && "$FEATURE_BRANCH" != "main" ]]; then
-      # PRD mode with no remaining task issues — check for an existing feat→main PR
-      FEATURE_PR_COUNT=$(gh pr list --repo "$REPO" --state open \
-        --base "main" \
-        --head "$FEATURE_BRANCH" \
-        --json number --jq 'length' \
-        < /dev/null 2>/dev/null)
+    # The following block only runs in normal (non-pinned) mode; pinned issue routing
+    # is fully handled above.
+    if [[ -z "${PINNED_ISSUE:-}" ]]; then
+      if [[ -n "$ISSUE_NUMBER" ]]; then
+        MODE="implement"
+        echo "  ▶  Mode: $MODE  (Issue #$ISSUE_NUMBER)"
+      elif [[ -n "$FEATURE_LABEL" && "$FEATURE_BRANCH" != "main" ]]; then
+        # PRD mode with no remaining task issues — check for an existing feat→main PR
+        FEATURE_PR_COUNT=$(gh pr list --repo "$REPO" --state open \
+          --base "main" \
+          --head "$FEATURE_BRANCH" \
+          --json number --jq 'length' \
+          < /dev/null 2>/dev/null)
 
-      if [[ "$FEATURE_PR_COUNT" == "0" ]]; then
-        MODE="feature-pr"
-        echo "  ▶  Mode: $MODE  (all task issues closed, opening feat→main PR)"
+        if [[ "$FEATURE_PR_COUNT" == "0" ]]; then
+          MODE="feature-pr"
+          echo "  ▶  Mode: $MODE  (all task issues closed, opening feat→main PR)"
+        else
+          MODE="complete"
+          echo "  ▶  Mode: $MODE  (feat→main PR already open or check failed)"
+        fi
       else
         MODE="complete"
-        echo "  ▶  Mode: $MODE  (feat→main PR already open or check failed)"
+        echo "  ▶  Mode: $MODE  (no open issues or PRs)"
       fi
-    else
-      MODE="complete"
-      echo "  ▶  Mode: $MODE  (no open issues or PRs)"
     fi
   fi
 }

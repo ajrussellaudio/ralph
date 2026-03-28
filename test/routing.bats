@@ -25,7 +25,8 @@ setup() {
         MOCK_REVIEWS_RESPONSE \
         MOCK_PR_LIST_RESPONSE  MOCK_FEATURE_PR_LIST_RESPONSE \
         MOCK_PR_VIEW_COMMENTS_RESPONSE  MOCK_PR_VIEW_COMMITS_RESPONSE \
-        MOCK_ISSUE_LIST_RESPONSE \
+        MOCK_ISSUE_LIST_RESPONSE  MOCK_ISSUE_VIEW_RESPONSE \
+        PINNED_ISSUE \
         || true
 }
 
@@ -225,4 +226,56 @@ setup() {
   determine_mode
 
   [ "$MODE" = "complete" ]
+}
+
+# ─── determine_mode: PINNED_ISSUE ────────────────────────────────────────────
+
+@test "pinned issue: no open PRs, issue is open → implement with correct ISSUE_NUMBER" {
+  export REVIEW_BACKEND=comments
+  export PINNED_ISSUE=82
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_ISSUE_VIEW_RESPONSE='{"state":"OPEN"}'
+
+  determine_mode
+
+  [ "$MODE" = "implement" ]
+  [ "$ISSUE_NUMBER" = "82" ]
+}
+
+@test "pinned issue: no open PRs, issue is closed → complete (not feature-pr)" {
+  export REVIEW_BACKEND=comments
+  export PINNED_ISSUE=82
+  export FEATURE_LABEL="prd/some-feature"
+  export FEATURE_BRANCH="feat/some-feature"
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_ISSUE_VIEW_RESPONSE='{"state":"CLOSED"}'
+
+  determine_mode
+
+  [ "$MODE" = "complete" ]
+}
+
+@test "pinned issue: open PR exists → normal PR routing (review)" {
+  export REVIEW_BACKEND=comments
+  export PINNED_ISSUE=82
+  export MOCK_PR_LIST_RESPONSE='[{"number":42,"headRefName":"ralph/issue-82"}]'
+  export MOCK_PR_VIEW_COMMENTS_RESPONSE='{"comments":[]}'
+
+  determine_mode
+
+  [ "$MODE" = "review" ]
+  [ "$PR_NUMBER" = "42" ]
+}
+
+@test "pinned issue: no open PRs, issue is open, no label → implement targeting main" {
+  export REVIEW_BACKEND=comments
+  export PINNED_ISSUE=10
+  export FEATURE_BRANCH="main"
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_ISSUE_VIEW_RESPONSE='{"state":"OPEN"}'
+
+  determine_mode
+
+  [ "$MODE" = "implement" ]
+  [ "$ISSUE_NUMBER" = "10" ]
 }

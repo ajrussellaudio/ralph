@@ -71,7 +71,7 @@ FORK_OWNER="${REPO%%/*}"
 # ── Argument validation ────────────────────────────────────────────────────────
 
 usage() {
-  echo "Usage: $(basename "$0") <max_iterations> [--label=<label>]"
+  echo "Usage: $(basename "$0") <max_iterations> [--label=<label>] [--issue=<N>]"
   echo ""
   echo "  max_iterations  A positive integer — how many Copilot iterations to"
   echo "                  allow before giving up. There is no default; you must"
@@ -81,12 +81,19 @@ usage() {
   echo "                  and FEATURE_LABEL=prd/<label>. When omitted, FEATURE_BRANCH"
   echo "                  defaults to 'main'."
   echo ""
+  echo "  --issue=<N>     Optional issue number. When set, Ralph skips normal issue"
+  echo "                  routing and implements only that specific issue. After the"
+  echo "                  issue is merged, Ralph exits cleanly without opening a"
+  echo "                  feature PR."
+  echo ""
   echo "Examples:"
   echo "  $(basename "$0") 20"
   echo "  $(basename "$0") 20 --label=foo-widget"
+  echo "  $(basename "$0") 20 --issue=82"
+  echo "  $(basename "$0") 20 --issue=82 --label=foo-widget"
 }
 
-if [[ $# -lt 1 || $# -gt 2 ]]; then
+if [[ $# -lt 1 || $# -gt 3 ]]; then
   usage
   exit 1
 fi
@@ -99,16 +106,19 @@ fi
 MAX_ITERATIONS="$1"
 FEATURE_LABEL=""
 FEATURE_BRANCH="main"
+PINNED_ISSUE=""
 
-if [[ $# -eq 2 ]]; then
-  if [[ "$2" =~ ^--label=(.+)$ ]]; then
+for arg in "${@:2}"; do
+  if [[ "$arg" =~ ^--label=(.+)$ ]]; then
     FEATURE_LABEL="prd/${BASH_REMATCH[1]}"
     FEATURE_BRANCH="feat/${BASH_REMATCH[1]}"
+  elif [[ "$arg" =~ ^--issue=([1-9][0-9]*)$ ]]; then
+    PINNED_ISSUE="${BASH_REMATCH[1]}"
   else
     usage
     exit 1
   fi
-fi
+done
 
 # ── Preflight checks ───────────────────────────────────────────────────────────
 
@@ -134,9 +144,10 @@ if [[ -z "$TEST_CMD" ]]; then
   exit 1
 fi
 
-# In PRD mode, validate that either prd/* issues exist or the feature branch already
-# exists on origin. If neither is true, the label is almost certainly a typo.
-if [[ -n "$FEATURE_LABEL" ]]; then
+# In PRD mode (without a pinned issue), validate that either prd/* issues exist or
+# the feature branch already exists on origin. If neither is true, the label is almost
+# certainly a typo.
+if [[ -n "$FEATURE_LABEL" && -z "$PINNED_ISSUE" ]]; then
   if PRD_ISSUE_COUNT=$(gh issue list --repo "$REPO" --state open \
       --label "$FEATURE_LABEL" \
       --json number --jq 'length' \
@@ -151,6 +162,21 @@ if [[ -n "$FEATURE_LABEL" ]]; then
   else
     echo "Warning: Could not reach GitHub API; skipping PRD preflight check."
   fi
+fi
+
+# If a specific issue is pinned, verify it exists and is not already closed.
+if [[ -n "$PINNED_ISSUE" ]]; then
+  PINNED_ISSUE_STATE=$(gh issue view "$PINNED_ISSUE" --repo "$REPO" --json state \
+    --jq '.state' < /dev/null 2>/dev/null || echo "")
+  if [[ -z "$PINNED_ISSUE_STATE" ]]; then
+    echo "Error: Issue #${PINNED_ISSUE} not found in ${REPO}. Check the issue number."
+    exit 1
+  fi
+  if [[ "$PINNED_ISSUE_STATE" == "CLOSED" ]]; then
+    echo "Issue #${PINNED_ISSUE} is already closed. Nothing to do."
+    exit 0
+  fi
+  export PINNED_ISSUE
 fi
 
 # ── Worktree setup ─────────────────────────────────────────────────────────────

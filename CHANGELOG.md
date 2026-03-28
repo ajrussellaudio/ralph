@@ -7,7 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- `upstream` config key in `project.example.toml` for fork-based workflows; when set, the final feature PR is opened against the upstream repo instead of the fork (#93)
+- `--issue=<N>` flag to `ralph.sh` to pin Ralph to a single specific issue, skipping normal label-based routing; when the issue's PR is merged and closed, Ralph exits cleanly without opening a feature PR (#96)
+- Pinned-issue routing in `determine_mode()` in `lib/routing.sh`: when `PINNED_ISSUE` is set, checks the issue state directly and routes to `implement` (open) or `complete` (closed) (#96)
+- Preflight check in `ralph.sh` that exits immediately with a clear message if the pinned issue is already closed (#96)
+- `gh issue view` support in `test/helpers/gh` mock binary via `MOCK_ISSUE_VIEW_RESPONSE` (#96)
+- Four bats test cases for `PINNED_ISSUE` routing scenarios in `test/routing.bats` (#96)
+
+ in `project.example.toml` for fork-based workflows; when set, the final feature PR is opened against the upstream repo instead of the fork (#93)
 - `UPSTREAM_REPO` variable in `ralph.sh` (defaults to `$REPO` when `upstream` is unset, preserving existing behaviour) (#93)
 - `FORK_OWNER` variable derived from the owner prefix of `$REPO` (#93)
 - `{{UPSTREAM_REPO}}` and `{{FORK_OWNER}}` placeholder substitutions in `build_prompt()` (#93)
