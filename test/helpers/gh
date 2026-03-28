@@ -12,6 +12,7 @@
 #   MOCK_PR_VIEW_COMMENTS_RESPONSE  JSON for: gh pr view --json comments
 #   MOCK_PR_VIEW_COMMITS_RESPONSE   JSON for: gh pr view --json commits
 #   MOCK_ISSUE_LIST_RESPONSE      JSON for: gh issue list
+#   MOCK_ISSUE_VIEW_RESPONSE      JSON for: gh issue view <N> --json state
 
 set -euo pipefail
 
@@ -50,6 +51,8 @@ MOCK_FEATURE_PR_LIST_RESPONSE="${MOCK_FEATURE_PR_LIST_RESPONSE:-[]}"
 MOCK_PR_VIEW_COMMENTS_RESPONSE="${MOCK_PR_VIEW_COMMENTS_RESPONSE:-$_default_obj}"
 MOCK_PR_VIEW_COMMITS_RESPONSE="${MOCK_PR_VIEW_COMMITS_RESPONSE:-$_default_commits}"
 MOCK_ISSUE_LIST_RESPONSE="${MOCK_ISSUE_LIST_RESPONSE:-[]}"
+_default_issue_view='{"state":"OPEN"}'
+MOCK_ISSUE_VIEW_RESPONSE="${MOCK_ISSUE_VIEW_RESPONSE:-$_default_issue_view}"
 
 CMD="${POSITIONAL[0]:-}"
 SUBCMD="${POSITIONAL[1]:-}"
@@ -86,6 +89,9 @@ case "$CMD" in
     case "$SUBCMD" in
       list)
         apply_jq "$MOCK_ISSUE_LIST_RESPONSE"
+        ;;
+      view)
+        apply_jq "$MOCK_ISSUE_VIEW_RESPONSE"
         ;;
     esac
     ;;
