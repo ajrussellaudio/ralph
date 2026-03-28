@@ -7,6 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Draft PR opened automatically on GitHub when `ralph.sh` creates a new feature branch (`feat/`), giving instant visibility that work has started; skipped when resuming an existing branch (#98)
+- `feature-pr` mode now detects an existing draft PR for the feature branch, updates its title and body with the full feature summary, and promotes it from draft to ready-for-review using `gh pr ready`; falls back to creating a new PR if no draft exists (#98)
+
 - `--issue=<N>` flag to `ralph.sh` to pin Ralph to a single specific issue, skipping normal label-based routing; when the issue's PR is merged and closed, Ralph exits cleanly without opening a feature PR (#96)
 - Pinned-issue routing in `determine_mode()` in `lib/routing.sh`: when `PINNED_ISSUE` is set, checks the issue state directly and routes to `implement` (open) or `complete` (closed) (#96)
 - Preflight check in `ralph.sh` that exits immediately with a clear message if the pinned issue is already closed (#96)
