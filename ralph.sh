@@ -211,6 +211,20 @@ if [[ "$FEATURE_BRANCH" != "main" ]]; then
     git -C "$GIT_ROOT" fetch origin main > /dev/null
     git -C "$GIT_ROOT" push origin "origin/main:refs/heads/${FEATURE_BRANCH}"
     echo "  ✅  Branch ${FEATURE_BRANCH} created on origin."
+
+    # Open a draft PR so the developer has instant visibility that work has started.
+    DRAFT_PR_BODY="🤖 Ralph is working on this feature. This PR will be updated when all tasks are complete."
+    DRAFT_PR_BODY_FILE=$(mktemp)
+    echo "$DRAFT_PR_BODY" > "$DRAFT_PR_BODY_FILE"
+    gh pr create \
+      --repo "$UPSTREAM_REPO" \
+      --base main \
+      --head "${FORK_OWNER}:${FEATURE_BRANCH}" \
+      --title "feat/: work in progress" \
+      --body-file "$DRAFT_PR_BODY_FILE" \
+      --draft \
+      < /dev/null && echo "  🚀  Draft PR opened for ${FEATURE_BRANCH}." || echo "  ⚠️   Could not open draft PR (non-fatal)."
+    rm -f "$DRAFT_PR_BODY_FILE"
   fi
 fi
 
