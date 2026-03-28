@@ -227,36 +227,77 @@ determine_mode() {
   if [[ "$PR_COUNT" -gt 0 ]]; then
     PR_NUMBER=$(echo "$OPEN_RALPH_PRS" | jq -r '.[0].number')
 
-    COMMENT_BODIES=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-      --json comments --jq '[.comments[].body] | join("\n---\n")' \
-      < /dev/null 2>/dev/null || echo "")
-
-    APPROVED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: APPROVED" 2>/dev/null || true)
-    CHANGES_REQUESTED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: REQUEST_CHANGES" 2>/dev/null || true)
-
-    if [[ "${APPROVED:-0}" -gt 0 ]]; then
-      MODE="merge"
-    elif [[ "${CHANGES_REQUESTED:-0}" -ge 2 ]]; then
-      MODE="force-approve"
-    elif [[ "${CHANGES_REQUESTED:-0}" -eq 1 ]]; then
-      # If commits were pushed after the REQUEST_CHANGES comment → round 2 review
-      # Otherwise → fix mode (no new commits yet)
-      LAST_RC_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+    if [[ "$REVIEW_BACKEND" == "copilot" ]]; then
+      # Copilot bot review path: query review state instead of HTML comment sentinels.
+      COPILOT_FIX_COMMENTS=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
         --json comments \
-        --jq '[.comments[] | select(.body | contains("RALPH-REVIEW: REQUEST_CHANGES"))] | last | .createdAt // ""' \
-        < /dev/null 2>/dev/null || echo "")
-      LATEST_COMMIT_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-        --json commits \
-        --jq '.commits | last | .committedDate // ""' \
-        < /dev/null 2>/dev/null || echo "")
+        --jq '[.comments[] | select(.body | contains("<!-- RALPH-FIX-BOT: RESPONSE -->"))]' \
+        < /dev/null 2>/dev/null || echo "[]")
 
-      if [[ -n "$LATEST_COMMIT_TIME" && -n "$LAST_RC_TIME" && "$LATEST_COMMIT_TIME" > "$LAST_RC_TIME" ]]; then
-        MODE="review-round2"
+      FIX_COUNT=$(echo "$COPILOT_FIX_COMMENTS" | jq 'length')
+      LAST_FIX_TIME=$(echo "$COPILOT_FIX_COMMENTS" | jq -r 'last | .createdAt // ""')
+
+      COPILOT_REVIEW_JSON=$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}/reviews" \
+        --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | last | {state: (.state // ""), submitted_at: (.submitted_at // "")}' \
+        < /dev/null 2>/dev/null || echo '{"state":"","submitted_at":""}')
+
+      COPILOT_REVIEW_STATE=$(echo "$COPILOT_REVIEW_JSON" | jq -r '.state')
+      LAST_BOT_REVIEW_TIME=$(echo "$COPILOT_REVIEW_JSON" | jq -r '.submitted_at')
+
+      if [[ -z "$COPILOT_REVIEW_STATE" ]]; then
+        MODE="wait"
+      elif [[ "$COPILOT_REVIEW_STATE" == "APPROVED" ]]; then
+        MODE="merge"
+      elif [[ "$COPILOT_REVIEW_STATE" == "CHANGES_REQUESTED" ]]; then
+        # If a fix-bot response was posted after the last review, treat the old
+        # review as addressed and wait for a new one.
+        if [[ -n "$LAST_FIX_TIME" && "$LAST_FIX_TIME" > "$LAST_BOT_REVIEW_TIME" ]]; then
+          MODE="wait"
+        elif [[ "${FIX_COUNT:-0}" -lt 10 ]]; then
+          MODE="fix-bot"
+        elif [[ -f "${MODES_DIR}/escalate.md" ]]; then
+          MODE="escalate"
+        else
+          echo "  ⚠️  FIX_COUNT >= 10 but modes/escalate.md not found — falling back to wait"
+          MODE="wait"
+        fi
       else
-        MODE="fix"
+        # COMMENTED or other non-terminal state — review not yet complete
+        MODE="wait"
       fi
     else
-      MODE="review"
+      # HTML comment sentinel path (existing logic).
+      COMMENT_BODIES=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+        --json comments --jq '[.comments[].body] | join("\n---\n")' \
+        < /dev/null 2>/dev/null || echo "")
+
+      APPROVED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: APPROVED" 2>/dev/null || true)
+      CHANGES_REQUESTED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: REQUEST_CHANGES" 2>/dev/null || true)
+
+      if [[ "${APPROVED:-0}" -gt 0 ]]; then
+        MODE="merge"
+      elif [[ "${CHANGES_REQUESTED:-0}" -ge 2 ]]; then
+        MODE="force-approve"
+      elif [[ "${CHANGES_REQUESTED:-0}" -eq 1 ]]; then
+        # If commits were pushed after the REQUEST_CHANGES comment → round 2 review
+        # Otherwise → fix mode (no new commits yet)
+        LAST_RC_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+          --json comments \
+          --jq '[.comments[] | select(.body | contains("RALPH-REVIEW: REQUEST_CHANGES"))] | last | .createdAt // ""' \
+          < /dev/null 2>/dev/null || echo "")
+        LATEST_COMMIT_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+          --json commits \
+          --jq '.commits | last | .committedDate // ""' \
+          < /dev/null 2>/dev/null || echo "")
+
+        if [[ -n "$LATEST_COMMIT_TIME" && -n "$LAST_RC_TIME" && "$LATEST_COMMIT_TIME" > "$LAST_RC_TIME" ]]; then
+          MODE="review-round2"
+        else
+          MODE="fix"
+        fi
+      else
+        MODE="review"
+      fi
     fi
 
     echo "  ▶  Mode: $MODE  (PR #$PR_NUMBER)"
@@ -334,6 +375,7 @@ build_prompt() {
   PROMPT="${PROMPT//\{\{TEST_CMD\}\}/$TEST_CMD}"
   PROMPT="${PROMPT//\{\{FEATURE_BRANCH\}\}/$FEATURE_BRANCH}"
   PROMPT="${PROMPT//\{\{FEATURE_LABEL\}\}/$FEATURE_LABEL}"
+  PROMPT="${PROMPT//\{\{REVIEW_BACKEND\}\}/$REVIEW_BACKEND}"
 }
 
 # ── Startup detection ─────────────────────────────────────────────────────────

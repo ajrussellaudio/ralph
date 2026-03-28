@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - `detect_review_backend()` function in `ralph.sh` that queries the GitHub API at startup, sets `REVIEW_BACKEND` to `copilot` when `copilot-pull-request-reviewer` is installed on the repo, and defaults to `comments` on any API failure or when the app is absent (#76)
 - `REVIEW_BACKEND` global exported at startup so all subsequent functions in the run can consume it (#76)
+- Copilot bot review routing in `determine_mode()`: when `REVIEW_BACKEND=copilot`, queries the bot review state instead of HTML comment sentinels — no review → `wait`, `APPROVED` → `merge`, `CHANGES_REQUESTED` with fix_count < 10 → `fix-bot`, fix_count >= 10 → `escalate` (#77)
+- `fix_count` tracking via `<!-- RALPH-FIX-BOT: RESPONSE -->` comment counting on the copilot bot path (#77)
+- `modes/wait.md`: new mode that emits STOP so the outer loop retries on the next iteration while awaiting a Copilot bot review (#77)
+- `modes/fix-bot.md`: new mode that reads all inline `copilot-pull-request-reviewer[bot]` comments, fixes them in one pass, commits, pushes, posts a fix-round marker comment, and re-requests Copilot review (#77)
+- `{{REVIEW_BACKEND}}` placeholder substitution in `build_prompt()` so mode files can act conditionally on the review backend (#77)
+- `implement.md` Step 4b: requests a Copilot review immediately after opening the PR when `REVIEW_BACKEND=copilot` (#77)
 - Escalation logic in `ralph-ext.sh`: when `fix_count >= 10`, labels the PR `needs-human-review`, posts an explanatory comment, and sets the project item status to "Blocked" (#68)
 - `escalate_pr()` shell function orchestrating PR labeling, commenting, and project status update on fix threshold breach (#68)
 - `ensure_label()` shell function for idempotent label creation on the repo (#68)
