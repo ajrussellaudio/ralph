@@ -94,11 +94,11 @@ determine_mode() {
         --json comments \
         < /dev/null 2>/dev/null || echo '{"comments":[]}')
 
-      COMMENT_BODIES=$(echo "$COMMENTS_JSON" | jq -r '[.comments[].body] | join("\n---\n")')
+      COMMENT_BODIES=$(echo "$COMMENTS_JSON" | jq -r '[.comments[].body // ""] | join("\n---\n")' || echo "")
 
       APPROVED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: APPROVED" 2>/dev/null || true)
       CHANGES_REQUESTED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: REQUEST_CHANGES" 2>/dev/null || true)
-      FIX_COUNT=$(echo "$COMMENTS_JSON" | jq '[.comments[] | select(.body | contains("<!-- RALPH-FIX: RESPONSE -->"))] | length')
+      FIX_COUNT=$(echo "$COMMENTS_JSON" | jq '[.comments[] | select(.body != null and (.body | contains("<!-- RALPH-FIX: RESPONSE -->"))) ] | length' || echo "0")
 
       if [[ "${APPROVED:-0}" -gt 0 ]]; then
         MODE="merge"
@@ -107,7 +107,7 @@ determine_mode() {
       elif [[ "${CHANGES_REQUESTED:-0}" -ge 1 ]]; then
         # If commits were pushed after the last REQUEST_CHANGES comment → review
         # Otherwise → fix mode (no new commits yet)
-        LAST_RC_TIME=$(echo "$COMMENTS_JSON" | jq -r '[.comments[] | select(.body | contains("RALPH-REVIEW: REQUEST_CHANGES"))] | last | .createdAt // ""')
+        LAST_RC_TIME=$(echo "$COMMENTS_JSON" | jq -r '[.comments[] | select(.body != null and (.body | contains("RALPH-REVIEW: REQUEST_CHANGES")))] | last | .createdAt // ""' || echo "")
         LATEST_COMMIT_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
           --json commits \
           --jq '.commits | last | .committedDate // ""' \
