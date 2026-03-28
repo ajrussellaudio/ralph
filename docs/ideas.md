@@ -29,6 +29,8 @@ Ralph is currently Bash + inline Python. A rewrite in Go would:
 - Enable clean subcommands (`ralph status`, `ralph doctor`, `ralph init`) via Cobra
 - Eliminate `set -o pipefail` / `|| true` error-handling noise
 
+A Go rewrite would also be a natural home for a proper TUI using [Bubble Tea](https://github.com/charmbracelet/bubbletea) — showing Ralph's current mode, iteration count, live output, and status of each task in a real terminal UI rather than raw log lines.
+
 **Trigger:** wait until `determine_mode` grows significantly more complex (e.g. Markdown backend routing), or until subcommand UX becomes painful in Bash. Not worth the investment while the feature set is still stabilising.
 
 ## README / docs
