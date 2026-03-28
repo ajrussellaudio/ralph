@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `modes/escalate.md`: new mode that ensures the `needs-human-review` label exists, labels the PR `needs-human-review`, labels the originating issue `blocked`, posts an explanatory comment on the PR, and emits STOP so the outer loop skips to the next unblocked task (#78)
 - `detect_review_backend()` function in `ralph.sh` that queries the GitHub API at startup, sets `REVIEW_BACKEND` to `copilot` when `copilot-pull-request-reviewer` is installed on the repo, and defaults to `comments` on any API failure or when the app is absent (#76)
 - `REVIEW_BACKEND` global exported at startup so all subsequent functions in the run can consume it (#76)
 - Copilot bot review routing in `determine_mode()`: when `REVIEW_BACKEND=copilot`, queries the bot review state instead of HTML comment sentinels — no review → `wait`, `APPROVED` → `merge`, `CHANGES_REQUESTED` with fix_count < 10 → `fix-bot`, fix_count >= 10 → `escalate` (#77)
