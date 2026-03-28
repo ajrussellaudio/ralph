@@ -38,7 +38,7 @@ rm /tmp/ralph-review.md
 ## Step 2 — Merge
 
 ```bash
-gh pr merge {{PR_NUMBER}} --repo {{REPO}} --merge < /dev/null
+gh pr merge {{PR_NUMBER}} --repo {{REPO}} --squash --delete-branch < /dev/null
 ```
 
 ## Step 3 — Update workspace to new `{{FEATURE_BRANCH}}`
