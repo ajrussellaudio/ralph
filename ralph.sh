@@ -189,11 +189,11 @@ git -C "$GIT_ROOT" worktree add --detach "$WORKTREE_DIR" "origin/$FEATURE_BRANCH
 detect_review_backend() {
   echo "  🔍 Detecting review backend…"
 
-  local app_slug
-  app_slug=$(gh api "/repos/${REPO}/installation" \
-    --jq '.app_slug // empty' 2>/dev/null || echo "")
+  local found
+  found=$(gh api "/repos/${REPO}/apps" \
+    --jq '[.[].slug] | any(. == "copilot-pull-request-reviewer")' 2>/dev/null || echo "false")
 
-  if [[ "$app_slug" == "copilot-pull-request-reviewer" ]]; then
+  if [[ "$found" == "true" ]]; then
     REVIEW_BACKEND="copilot"
     echo "  🤖 Review backend: copilot"
   else
