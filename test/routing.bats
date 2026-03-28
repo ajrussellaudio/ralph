@@ -75,6 +75,19 @@ setup() {
   [ "$PR_NUMBER" = "42" ]
 }
 
+@test "copilot: CHANGES_REQUESTED, fix posted after review → wait" {
+  export REVIEW_BACKEND=copilot
+  export MOCK_PR_LIST_RESPONSE='[{"number":42,"headRefName":"ralph/issue-42"}]'
+  export MOCK_PR_VIEW_COMMENTS_RESPONSE='{"comments":[
+    {"body":"<!-- RALPH-FIX-BOT: RESPONSE -->","createdAt":"2024-01-03T00:00:00Z"}
+  ]}'
+  export MOCK_REVIEWS_RESPONSE='[{"user":{"login":"copilot-pull-request-reviewer[bot]"},"state":"CHANGES_REQUESTED","submitted_at":"2024-01-02T00:00:00Z"}]'
+
+  determine_mode
+
+  [ "$MODE" = "wait" ]
+}
+
 @test "copilot: CHANGES_REQUESTED, fix_count=3 → fix-bot" {
   export REVIEW_BACKEND=copilot
   export MOCK_PR_LIST_RESPONSE='[{"number":42,"headRefName":"ralph/issue-42"}]'
