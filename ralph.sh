@@ -212,6 +212,15 @@ if [[ "$FEATURE_BRANCH" != "main" ]]; then
     git -C "$GIT_ROOT" push origin "origin/main:refs/heads/${FEATURE_BRANCH}"
     echo "  ✅  Branch ${FEATURE_BRANCH} created on origin."
 
+    # Push an empty init commit so GitHub allows PR creation and work-start is visible.
+    git -C "$GIT_ROOT" fetch origin "$FEATURE_BRANCH" > /dev/null
+    PARENT_SHA=$(git -C "$GIT_ROOT" rev-parse "origin/${FEATURE_BRANCH}")
+    TREE_SHA=$(git -C "$GIT_ROOT" rev-parse "origin/${FEATURE_BRANCH}^{tree}")
+    EMPTY_COMMIT=$(git -C "$GIT_ROOT" commit-tree "$TREE_SHA" -p "$PARENT_SHA" -m "chore: initialise ${FEATURE_BRANCH}")
+    git -C "$GIT_ROOT" push origin "${EMPTY_COMMIT}:refs/heads/${FEATURE_BRANCH}" > /dev/null
+    git -C "$GIT_ROOT" fetch origin "$FEATURE_BRANCH" > /dev/null
+    echo "  📝  Empty init commit pushed."
+
     # Open a draft PR so the developer has instant visibility that work has started.
     DRAFT_PR_BODY="🤖 Ralph is working on this feature. This PR will be updated when all tasks are complete."
     DRAFT_PR_BODY_FILE=$(mktemp)
