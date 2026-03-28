@@ -180,7 +180,7 @@ setup() {
   [ "$MODE" = "fix" ]
 }
 
-@test "comments: open PR, REQUEST_CHANGES x1, new commits after review → review-round2" {
+@test "comments: open PR, REQUEST_CHANGES x1, new commits after review → review" {
   export REVIEW_BACKEND=comments
   export MOCK_PR_LIST_RESPONSE='[{"number":7,"headRefName":"ralph/issue-7"}]'
   export MOCK_PR_VIEW_COMMENTS_RESPONSE='{"comments":[
@@ -191,20 +191,52 @@ setup() {
 
   determine_mode
 
-  [ "$MODE" = "review-round2" ]
+  [ "$MODE" = "review" ]
 }
 
-@test "comments: open PR, REQUEST_CHANGES x2 → force-approve" {
+@test "comments: open PR, fix_count=10 → force-approve" {
   export REVIEW_BACKEND=comments
   export MOCK_PR_LIST_RESPONSE='[{"number":7,"headRefName":"ralph/issue-7"}]'
   export MOCK_PR_VIEW_COMMENTS_RESPONSE='{"comments":[
-    {"body":"RALPH-REVIEW: REQUEST_CHANGES","createdAt":"2024-01-01T00:00:00Z"},
-    {"body":"RALPH-REVIEW: REQUEST_CHANGES","createdAt":"2024-01-02T00:00:00Z"}
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-01T00:00:00Z"},
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-02T00:00:00Z"},
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-03T00:00:00Z"},
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-04T00:00:00Z"},
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-05T00:00:00Z"},
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-06T00:00:00Z"},
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-07T00:00:00Z"},
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-08T00:00:00Z"},
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-09T00:00:00Z"},
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-10T00:00:00Z"},
+    {"body":"RALPH-REVIEW: REQUEST_CHANGES","createdAt":"2024-01-11T00:00:00Z"}
   ]}'
 
   determine_mode
 
   [ "$MODE" = "force-approve" ]
+}
+
+@test "comments: open PR, fix_count=9 (< 10), REQUEST_CHANGES, new commits → review" {
+  export REVIEW_BACKEND=comments
+  export MOCK_PR_LIST_RESPONSE='[{"number":7,"headRefName":"ralph/issue-7"}]'
+  export MOCK_PR_VIEW_COMMENTS_RESPONSE='{"comments":[
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-01T00:00:00Z"},
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-02T00:00:00Z"},
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-03T00:00:00Z"},
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-04T00:00:00Z"},
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-05T00:00:00Z"},
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-06T00:00:00Z"},
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-07T00:00:00Z"},
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-08T00:00:00Z"},
+    {"body":"<!-- RALPH-FIX: RESPONSE -->","createdAt":"2024-01-09T00:00:00Z"},
+    {"body":"RALPH-REVIEW: REQUEST_CHANGES","createdAt":"2024-01-10T00:00:00Z"}
+  ]}'
+  # New commits after the last REQUEST_CHANGES
+  export MOCK_PR_VIEW_COMMITS_RESPONSE='{"commits":[{"committedDate":"2024-01-11T00:00:00Z"}]}'
+
+  determine_mode
+
+  [ "$MODE" = "review" ]
 }
 
 @test "comments: no open PRs, open issue → implement" {

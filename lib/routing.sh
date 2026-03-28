@@ -3,6 +3,8 @@
 #
 # Sourced by ralph.sh and by bats unit tests (with RALPH_TESTING=1 to skip
 # git-worktree sync).
+#
+# MODE is one of: implement | review | fix | force-approve | merge | complete
 
 # Queries the GitHub API for apps installed on the repo and sets REVIEW_BACKEND
 # to 'copilot' if copilot-pull-request-reviewer is present, otherwise 'comments'.
@@ -26,7 +28,7 @@ detect_review_backend() {
 }
 
 # Populates MODE, PR_NUMBER, ISSUE_NUMBER based on current GitHub state.
-# MODE is one of: implement | review | review-round2 | fix | force-approve | merge | complete
+# MODE is one of: implement | review | fix | force-approve | merge | complete
 determine_mode() {
   PR_NUMBER=""
   ISSUE_NUMBER=""
@@ -87,32 +89,32 @@ determine_mode() {
         MODE="wait"
       fi
     else
-      # HTML comment sentinel path (existing logic).
-      COMMENT_BODIES=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-        --json comments --jq '[.comments[].body] | join("\n---\n")' \
-        < /dev/null 2>/dev/null || echo "")
+      # HTML comment sentinel path.
+      COMMENTS_JSON=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+        --json comments \
+        < /dev/null 2>/dev/null || echo '{"comments":[]}')
+
+      COMMENT_BODIES=$(echo "$COMMENTS_JSON" | jq -r '[.comments[].body] | join("\n---\n")')
 
       APPROVED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: APPROVED" 2>/dev/null || true)
       CHANGES_REQUESTED=$(echo "$COMMENT_BODIES" | grep -c "RALPH-REVIEW: REQUEST_CHANGES" 2>/dev/null || true)
+      FIX_COUNT=$(echo "$COMMENTS_JSON" | jq '[.comments[] | select(.body | contains("<!-- RALPH-FIX: RESPONSE -->"))] | length')
 
       if [[ "${APPROVED:-0}" -gt 0 ]]; then
         MODE="merge"
-      elif [[ "${CHANGES_REQUESTED:-0}" -ge 2 ]]; then
+      elif [[ "${FIX_COUNT:-0}" -ge 10 ]]; then
         MODE="force-approve"
-      elif [[ "${CHANGES_REQUESTED:-0}" -eq 1 ]]; then
-        # If commits were pushed after the REQUEST_CHANGES comment → round 2 review
+      elif [[ "${CHANGES_REQUESTED:-0}" -ge 1 ]]; then
+        # If commits were pushed after the last REQUEST_CHANGES comment → review
         # Otherwise → fix mode (no new commits yet)
-        LAST_RC_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-          --json comments \
-          --jq '[.comments[] | select(.body | contains("RALPH-REVIEW: REQUEST_CHANGES"))] | last | .createdAt // ""' \
-          < /dev/null 2>/dev/null || echo "")
+        LAST_RC_TIME=$(echo "$COMMENTS_JSON" | jq -r '[.comments[] | select(.body | contains("RALPH-REVIEW: REQUEST_CHANGES"))] | last | .createdAt // ""')
         LATEST_COMMIT_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
           --json commits \
           --jq '.commits | last | .committedDate // ""' \
           < /dev/null 2>/dev/null || echo "")
 
         if [[ -n "$LATEST_COMMIT_TIME" && -n "$LAST_RC_TIME" && "$LATEST_COMMIT_TIME" > "$LAST_RC_TIME" ]]; then
-          MODE="review-round2"
+          MODE="review"
         else
           MODE="fix"
         fi

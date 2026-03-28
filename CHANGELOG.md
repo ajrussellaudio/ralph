@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- `review.md` now reads all prior `<!-- RALPH-REVIEW: REQUEST_CHANGES -->` and `<!-- RALPH-FIX: RESPONSE -->` comments before delegating to the review sub-agent, providing full multi-round context (#86)
+- After a fix (new commits pushed after a `REQUEST_CHANGES` comment), `determine_mode()` HTML path now routes to `review` instead of `review-round2` (#86)
+- Force-approve threshold raised from 2 `REQUEST_CHANGES` comments to 10 `<!-- RALPH-FIX: RESPONSE -->` comments (#86)
+
+### Removed
+- `modes/review-round2.md` deleted; all post-fix reviews now cycle back through `review.md` (#86)
+
 ### Fixed
 - `toml_get` no longer silently exits the script when a TOML key is missing; appended `|| true` to the `grep | sed` pipeline so a no-match is not fatal under `set -euo pipefail` (#82)
 
