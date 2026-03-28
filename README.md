@@ -48,11 +48,14 @@ Each iteration Ralph:
 
 3. **Run from your project root:**
    ```bash
-   ralph 20
+   ralph
    # or, to work within a feature branch:
-   ralph 20 --label=foo-widget
+   ralph --label=foo-widget
+   # or, to cap the number of iterations:
+   ralph --max-iterations=20 --label=foo-widget
    ```
-   Replace `20` with however many iterations you want to allow.
+   Ralph runs indefinitely by default, stopping only when all tasks are complete.
+   Use `--max-iterations=N` as an escape hatch if you want a hard cap.
 
 4. **Update Ralph at any time:**
    ```bash
