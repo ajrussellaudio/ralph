@@ -43,7 +43,20 @@ gh pr view {{PR_NUMBER}} --repo {{REPO}} --json headRefName --jq .headRefName < 
 
 Call the resolved issue number `<ISSUE_NUMBER>` in the steps below.
 
-## Step 4 — Label the originating issue `blocked`
+## Step 4 — Ensure the `blocked` label exists and label the originating issue
+
+Create the label on the repo if it does not already exist (the `--force` flag is a no-op if the label is already present):
+
+```bash
+gh label create "blocked" \
+  --repo {{REPO}} \
+  --description "Blocked — waiting for external action" \
+  --color "E4E669" \
+  --force \
+  < /dev/null
+```
+
+Then label the issue:
 
 ```bash
 gh issue edit <ISSUE_NUMBER> --repo {{REPO}} --add-label "blocked" < /dev/null
@@ -63,8 +76,9 @@ The originating issue has been labelled `blocked` and will be skipped by Ralph u
 
 — Ralph 🤖
 EOF
-gh pr comment {{PR_NUMBER}} --repo {{REPO}} --body-file /tmp/ralph-escalate-{{PR_NUMBER}}.md < /dev/null
-rm /tmp/ralph-escalate-{{PR_NUMBER}}.md
+gh pr comment {{PR_NUMBER}} --repo {{REPO}} --body-file /tmp/ralph-escalate-{{PR_NUMBER}}.md < /dev/null \
+  && rm /tmp/ralph-escalate-{{PR_NUMBER}}.md \
+  || { rm /tmp/ralph-escalate-{{PR_NUMBER}}.md; echo "ERROR: failed to post escalation comment" >&2; exit 1; }
 ```
 
 ## Step 6 — Stop
