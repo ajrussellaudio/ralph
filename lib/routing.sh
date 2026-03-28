@@ -129,7 +129,10 @@ determine_mode() {
       # Single-issue mode: check if the pinned issue is still open.
       PINNED_STATE=$(gh issue view "$PINNED_ISSUE" --repo "$REPO" --json state \
         --jq '.state' < /dev/null 2>/dev/null || echo "")
-      if [[ "$PINNED_STATE" == "CLOSED" ]]; then
+      if [[ -z "$PINNED_STATE" ]]; then
+        echo "  ⚠  Could not determine state of pinned issue #${PINNED_ISSUE} — skipping"
+        MODE="complete"
+      elif [[ "$PINNED_STATE" == "CLOSED" ]]; then
         MODE="complete"
         echo "  ▶  Mode: $MODE  (pinned issue #${PINNED_ISSUE} is closed)"
       else

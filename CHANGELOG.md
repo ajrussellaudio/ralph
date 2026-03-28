@@ -13,7 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `gh issue view` support in `test/helpers/gh` mock binary via `MOCK_ISSUE_VIEW_RESPONSE` (#96)
 - Four bats test cases for `PINNED_ISSUE` routing scenarios in `test/routing.bats` (#96)
 
- in `project.example.toml` for fork-based workflows; when set, the final feature PR is opened against the upstream repo instead of the fork (#93)
+- `upstream` config key in `project.example.toml` for fork-based workflows; when set, the final feature PR is opened against the upstream repo instead of the fork (#93)
 - `UPSTREAM_REPO` variable in `ralph.sh` (defaults to `$REPO` when `upstream` is unset, preserving existing behaviour) (#93)
 - `FORK_OWNER` variable derived from the owner prefix of `$REPO` (#93)
 - `{{UPSTREAM_REPO}}` and `{{FORK_OWNER}}` placeholder substitutions in `build_prompt()` (#93)
