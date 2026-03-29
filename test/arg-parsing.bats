@@ -27,6 +27,12 @@ RALPH="$REPO_ROOT/ralph.sh"
   echo "$output" | grep -q "FEATURE_BRANCH=feat/foo-widget"
 }
 
+@test "status with unknown flag: exits non-zero with usage message" {
+  run env RALPH_PARSE_ONLY=1 "$RALPH" status --unknown
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -qi "usage"
+}
+
 @test "run subcommand: exits 0" {
   run env RALPH_PARSE_ONLY=1 "$RALPH" run
   [ "$status" -eq 0 ]
