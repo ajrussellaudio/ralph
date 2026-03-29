@@ -18,7 +18,7 @@ Collect the bodies of any `<!-- RALPH-REVIEW: REQUEST_CHANGES -->` comments (pre
 
 Delegate the review to a sub-agent. Do not review the code yourself.
 
-Launch a **general-purpose sub-agent** with this prompt:
+Launch a **code-review sub-agent** with this prompt:
 
 > "Review PR #{{PR_NUMBER}} in `{{REPO}}`.
 > Get the diff with: `gh pr diff {{PR_NUMBER}} --repo {{REPO}}`
@@ -28,9 +28,7 @@ Launch a **general-purpose sub-agent** with this prompt:
 > Prior review rounds (for context — use to avoid re-raising issues that were already flagged and addressed with FIXED):
 > <paste all RALPH-REVIEW: REQUEST_CHANGES and RALPH-FIX: RESPONSE comment bodies here, or write "None" if there are none>
 >
-> You are a strict code reviewer with no attachment to this code.
-> Surface only: genuine bugs, logic errors, missing test coverage for new behaviour, or security issues.
-> Do NOT comment on: style, formatting, naming conventions, or speculative concerns.
+> Also flag any missing test coverage for new behaviour.
 > Do NOT re-raise any issue that appears in a prior RALPH-FIX: RESPONSE comment tagged as FIXED — trust that it was addressed unless the current diff shows it was not.
 > For each issue found, return: file path, approximate line number, a clear description of the problem, and a concrete suggested fix.
 > If you find no genuine issues, return exactly the word: LGTM"
