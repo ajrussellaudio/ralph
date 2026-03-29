@@ -2,64 +2,71 @@
 
 ## Per-iteration routing
 
-Each iteration, Ralph scans task state and picks a mode using the following priority order:
+Each iteration, Ralph syncs the worktree then picks a mode. If an open `ralph/issue-*` PR exists, the review backend determines the path. Otherwise Ralph looks for the next issue to implement.
 
 ```mermaid
 flowchart TD
-    START([🤖 Iteration starts]) --> R1{Any task\nneeds_review?}
+    START([🤖 Iteration starts]) --> SYNC[Sync worktree\nto origin/FEATURE_BRANCH]
+    SYNC --> R1{Open ralph/issue-*\nPR on FEATURE_BRANCH?}
 
-    R1 -->|Yes| REVIEW[review.md]
-    R1 -->|No| R2{Any task\napproved?}
+    R1 -->|Yes — first open PR| BACKEND{Review\nbackend?}
 
-    R2 -->|Yes| MERGE[merge.md]
-    R2 -->|No| R3{Any task\nneeds_review_2?}
+    BACKEND -->|Copilot bot| BOT{Bot review\nstate?}
+    BOT -->|None yet| WAIT[wait.md]
+    BOT -->|APPROVED| MERGE[merge.md]
+    BOT -->|Other / COMMENTED| WAIT
+    BOT -->|CHANGES_REQUESTED| BOT_RC{Fix posted\nafter last review?}
+    BOT_RC -->|Yes — await re-review| WAIT
+    BOT_RC -->|No, fix_count < 10| FIXBOT[fix-bot.md]
+    BOT_RC -->|No, fix_count ≥ 10| ESCALATE[escalate.md]
 
-    R3 -->|Yes| REVIEW2[review-round2.md]
-    R3 -->|No| R4{Any task\nneeds_fix?}
+    BACKEND -->|HTML comments| CMT{Comment\nsentinels?}
+    CMT -->|APPROVED| MERGE
+    CMT -->|fix_count ≥ 10| FORCE[force-approve.md]
+    CMT -->|REQUEST_CHANGES\n+ new commits since| REVIEW[review.md]
+    CMT -->|REQUEST_CHANGES\nno new commits| FIX[fix.md]
+    CMT -->|No review yet| REVIEW
 
-    R4 -->|fix_count ≥ 2| FORCE[force-approve.md]
-    R4 -->|fix_count < 2| FIX[fix.md]
-    R4 -->|No| R5{Any task\nin_progress?}
+    R1 -->|No open PRs| PINNED{--issue=N\nset?}
 
-    R5 -->|Yes — resume| FIX
-    R5 -->|No| R6{Unblocked\npending task?}
+    PINNED -->|Yes| PINSTATE{Issue\nstill open?}
+    PINSTATE -->|Closed| COMPLETE([✅ Stop — complete])
+    PINSTATE -->|Open| IMPL[implement.md]
 
-    R6 -->|Yes| IMPL[implement.md]
-    R6 -->|No| R7{All pending\ntasks blocked?}
+    PINNED -->|No| LABEL{--label\nset?}
 
-    R7 -->|Yes| BLOCKED([⏸ Stop — blocked])
-    R7 -->|No| R8{All tasks\ndone?}
+    LABEL -->|Yes — PRD mode| NEXT{Unblocked open\nissue with label?}
+    NEXT -->|Yes| IMPL
+    NEXT -->|No| FPRCHECK{feat→main PR\nalready open?}
+    FPRCHECK -->|No| FPR[feature-pr.md]
+    FPRCHECK -->|Yes| COMPLETE
 
-    R8 -->|No| FALLBACK([⚠️ Stop — unexpected state])
-    R8 -->|Yes| R9{feat→main PR\nalready open?}
-
-    R9 -->|No| FPR[feature-pr.md]
-    R9 -->|Yes| COMPLETE([✅ Stop — complete])
-    FPR --> COMPLETE
+    LABEL -->|No — standalone| STANDALONE{Open non-prd\nissue?}
+    STANDALONE -->|Yes| IMPL
+    STANDALONE -->|No| COMPLETE
 ```
 
 ## Task lifecycle
 
-State machine for a single task, driven by mode file outcomes:
+State machine for a single issue. State is inferred each iteration from the PR's review comments — nothing is stored explicitly.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> pending
-    pending --> in_progress : implement.md starts
-    in_progress --> needs_review : implement.md commits
+    [*] --> open : issue created
 
-    needs_review --> approved : review.md ✓
-    needs_review --> needs_fix : review.md ✗
+    open --> implementing : implement.md\n(ralph/issue-N branch + draft PR opened)
 
-    needs_fix --> needs_review_2 : fix.md\n(fix_count++)
-    needs_fix --> done : force-approve.md\n(fix_count ≥ 2)
+    implementing --> awaiting_review : implement.md\n(commits pushed)
 
-    needs_review_2 --> approved : review-round2.md ✓
-    needs_review_2 --> needs_fix : review-round2.md ✗
+    awaiting_review --> approved : review ✓\n(APPROVED sentinel or bot approval)
+    awaiting_review --> needs_fix : review ✗\n(REQUEST_CHANGES)
 
-    approved --> done : merge.md
+    needs_fix --> awaiting_review : fix.md / fix-bot.md\n(fix_count++)
+    needs_fix --> done : force-approve.md / escalate.md\n(fix_count ≥ 10)
+
+    approved --> done : merge.md\n(PR merged, branch deleted, issue closed)
 
     done --> [*]
 ```
 
-> **Note:** `in_progress` is a crash-recovery sentinel. If Ralph is killed mid-implement, the next iteration sees `in_progress` and routes to `fix.md` to resume. Within a normal run it is transient.
+> **Note:** `wait` is a transient hold state (not shown above) used when the Copilot bot has been asked to review but hasn't responded yet, or when a fix has been posted and Ralph is waiting for the bot to re-review.
