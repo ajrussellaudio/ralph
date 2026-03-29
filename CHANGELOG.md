@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `ralph doctor` subcommand dispatched from `ralph.sh` (#117)
 - `test/doctor.bats`: bats tests covering all-pass, each hard failure in isolation, each warning in isolation, multiple simultaneous failures, mix of warnings and failures, and exit code behaviour (#117)
 
+### Changed
+- `ralph run` preflight now calls `ralph_doctor()` instead of the old ad-hoc checks; aborts with exit 1 if any hard failure is found (#118)
+- Missing `test` command in `ralph.toml` is now a ⚠️ warning (not a hard error) in both `ralph doctor` and `ralph run` (#118)
+
 - `ralph status` issues section: lists all open in-scope issues with number and title; blocked issues marked with ⚠️; placeholder shown when none (#113)
 - `ralph status --label=foo` filters issues to those labelled `prd/foo`; without `--label`, shows all issues excluding `prd/*`-labelled ones (#113)
 - `ralph status --label=foo` feature PR section: shows the `feat/foo` → main aggregate PR (number, branch, review state, CI) when one exists; omitted entirely when none (#113)

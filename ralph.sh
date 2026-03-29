@@ -200,27 +200,11 @@ if [[ "${RALPH_PARSE_ONLY:-}" == "1" ]]; then
   exit 0
 fi
 
-# ── Preflight checks ───────────────────────────────────────────────────────────
+# ── Preflight checks (via ralph_doctor) ───────────────────────────────────────
 
-if ! command -v copilot &>/dev/null; then
-  echo "Error: 'copilot' not found in PATH. Install the GitHub Copilot CLI first."
-  exit 1
-fi
-
-if [[ ! -d "$MODES_DIR" ]]; then
-  echo "Error: Modes directory not found at $MODES_DIR"
-  exit 1
-fi
-
-if [[ -z "$REPO" ]]; then
-  echo "Error: Could not determine the GitHub repo. Add 'repo = \"owner/repo\"' to"
-  echo "ralph.toml in your project root, or run from inside a GitHub repository."
-  exit 1
-fi
-
-if [[ -z "$TEST_CMD" ]]; then
-  echo "Error: No test command configured. Add 'test = \"your-test-cmd\"' to"
-  echo "ralph.toml in your project root (create it from ~/.ralph/project.example.toml)."
+# shellcheck source=lib/doctor.sh
+source "$SCRIPT_DIR/lib/doctor.sh"
+if ! ralph_doctor; then
   exit 1
 fi
 
