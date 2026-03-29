@@ -151,6 +151,30 @@ setup() {
   [ "$MODE" = "feature-pr" ]
 }
 
+@test "copilot: no open PRs, no open issues, draft feat→main PR → feature-pr" {
+  export REVIEW_BACKEND=copilot
+  export FEATURE_LABEL="prd/now-with-forks"
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_ISSUE_LIST_RESPONSE='[]'
+  export MOCK_FEATURE_PR_LIST_RESPONSE='[{"number":5,"isDraft":true}]'
+
+  determine_mode
+
+  [ "$MODE" = "feature-pr" ]
+}
+
+@test "copilot: no open PRs, no open issues, non-draft feat→main PR → complete" {
+  export REVIEW_BACKEND=copilot
+  export FEATURE_LABEL="prd/now-with-forks"
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_ISSUE_LIST_RESPONSE='[]'
+  export MOCK_FEATURE_PR_LIST_RESPONSE='[{"number":5,"isDraft":false}]'
+
+  determine_mode
+
+  [ "$MODE" = "complete" ]
+}
+
 # ─── determine_mode: REVIEW_BACKEND=comments ─────────────────────────────────
 
 @test "comments: open PR, APPROVED comment → merge" {
