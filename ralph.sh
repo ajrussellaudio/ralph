@@ -80,6 +80,9 @@ elif [[ "$1" == "run" ]]; then
 elif [[ "$1" == "status" ]]; then
   SUBCOMMAND="status"
   shift
+elif [[ "$1" == "doctor" ]]; then
+  SUBCOMMAND="doctor"
+  shift
 elif [[ "$1" =~ ^-- ]]; then
   echo "Error: '$1' requires a subcommand. Did you mean: ralph run $*"
   echo "Use 'ralph run' to start the agent loop."
@@ -92,6 +95,7 @@ else
   echo "Subcommands:"
   echo "  run     Start the Copilot agent loop"
   echo "  status  Show status of the current feature"
+  echo "  doctor  Check environment health"
   exit 1
 fi
 
@@ -121,6 +125,20 @@ if [[ "$SUBCOMMAND" == "status" ]]; then
   source "$SCRIPT_DIR/lib/status.sh"
   ralph_status
   exit 0
+fi
+
+# ── Doctor handler ─────────────────────────────────────────────────────────────
+
+if [[ "$SUBCOMMAND" == "doctor" ]]; then
+  if [[ "${RALPH_PARSE_ONLY:-}" == "1" ]]; then
+    echo "SUBCOMMAND=doctor"
+    exit 0
+  fi
+
+  # shellcheck source=lib/doctor.sh
+  source "$SCRIPT_DIR/lib/doctor.sh"
+  ralph_doctor
+  exit $?
 fi
 
 # ── Argument validation (run subcommand) ───────────────────────────────────────
@@ -182,27 +200,11 @@ if [[ "${RALPH_PARSE_ONLY:-}" == "1" ]]; then
   exit 0
 fi
 
-# ── Preflight checks ───────────────────────────────────────────────────────────
+# ── Preflight checks (via ralph_doctor) ───────────────────────────────────────
 
-if ! command -v copilot &>/dev/null; then
-  echo "Error: 'copilot' not found in PATH. Install the GitHub Copilot CLI first."
-  exit 1
-fi
-
-if [[ ! -d "$MODES_DIR" ]]; then
-  echo "Error: Modes directory not found at $MODES_DIR"
-  exit 1
-fi
-
-if [[ -z "$REPO" ]]; then
-  echo "Error: Could not determine the GitHub repo. Add 'repo = \"owner/repo\"' to"
-  echo "ralph.toml in your project root, or run from inside a GitHub repository."
-  exit 1
-fi
-
-if [[ -z "$TEST_CMD" ]]; then
-  echo "Error: No test command configured. Add 'test = \"your-test-cmd\"' to"
-  echo "ralph.toml in your project root (create it from ~/.ralph/project.example.toml)."
+# shellcheck source=lib/doctor.sh
+source "$SCRIPT_DIR/lib/doctor.sh"
+if ! ralph_doctor; then
   exit 1
 fi
 

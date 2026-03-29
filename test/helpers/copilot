@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Mock copilot CLI stub for bats tests.
+# Always exits 0 to simulate the tool being present and functional.
+exit 0
