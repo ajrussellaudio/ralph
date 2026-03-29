@@ -83,6 +83,9 @@ elif [[ "$1" == "status" ]]; then
 elif [[ "$1" == "doctor" ]]; then
   SUBCOMMAND="doctor"
   shift
+elif [[ "$1" == "init" ]]; then
+  SUBCOMMAND="init"
+  shift
 elif [[ "$1" =~ ^-- ]]; then
   echo "Error: '$1' requires a subcommand. Did you mean: ralph run $*"
   echo "Use 'ralph run' to start the agent loop."
@@ -96,6 +99,7 @@ else
   echo "  run     Start the Copilot agent loop"
   echo "  status  Show status of the current feature"
   echo "  doctor  Check environment health"
+  echo "  init    Scaffold a ralph.toml configuration file"
   exit 1
 fi
 
@@ -138,6 +142,20 @@ if [[ "$SUBCOMMAND" == "doctor" ]]; then
   # shellcheck source=lib/doctor.sh
   source "$SCRIPT_DIR/lib/doctor.sh"
   ralph_doctor
+  exit $?
+fi
+
+# ── Init handler ───────────────────────────────────────────────────────────────
+
+if [[ "$SUBCOMMAND" == "init" ]]; then
+  if [[ "${RALPH_PARSE_ONLY:-}" == "1" ]]; then
+    echo "SUBCOMMAND=init"
+    exit 0
+  fi
+
+  # shellcheck source=lib/init.sh
+  source "$SCRIPT_DIR/lib/init.sh"
+  ralph_init
   exit $?
 fi
 

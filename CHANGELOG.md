@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `lib/doctor.sh` with `ralph_doctor()`: audits 9 environment checks (copilot in PATH, gh in PATH, gh authenticated, repo resolvable, modes directory present, ralph.toml present, test/build commands configured, GitHub API reachable); prints ✅/⚠️/❌ per check with fix hints; exits 0 if no hard failures, 1 if any occur (#117)
 - `ralph doctor` subcommand dispatched from `ralph.sh` (#117)
 - `test/doctor.bats`: bats tests covering all-pass, each hard failure in isolation, each warning in isolation, multiple simultaneous failures, mix of warnings and failures, and exit code behaviour (#117)
+- `lib/init.sh` with `ralph_init()`: guided prompt sequence to scaffold `ralph.toml`; infers `repo` from `gh repo view`; prompts for all four fields with descriptions and defaults; shows file preview in a `━━━` box with `Write this file? [Y/n]` confirmation; writes file with inline comments matching `project.example.toml` style; calls `ralph_doctor()` after a successful write (#122)
+- `ralph init` subcommand dispatched from `ralph.sh` (#122)
+- `test/init.bats`: bats tests covering all-defaults accepted, user overrides, blank upstream, declined preview, file comments, repo inference, and doctor call (#122)
 
 ### Changed
 - `ralph run` preflight now calls `ralph_doctor()` instead of the old ad-hoc checks; aborts with exit 1 if any hard failure is found (#118)
