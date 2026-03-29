@@ -13,7 +13,8 @@ You are implementing GitHub issue #{{ISSUE_NUMBER}} in the `{{REPO}}` repository
 
 - Check out a new branch: `git checkout -b ralph/issue-{{ISSUE_NUMBER}}`
 - Where practical, write tests before implementation (red → green). Tests should verify behaviour through public interfaces, not implementation details.
-- Implement everything required to satisfy all acceptance criteria.
+- Implement **only** what is required to satisfy the acceptance criteria. Do not refactor, extend, or improve code that is outside the scope of the issue.
+- **Never delete or weaken existing tests** to make them pass. If a pre-existing test is failing, fix the code — not the test.
 - Delegate expensive work to sub-agents where possible (running the test suite, reading large files, summarising command output) to keep your primary context window lean.
 
 ## Step 3 — Verify
@@ -50,6 +51,14 @@ If the checks passed:
   ```
 - If `## [Unreleased]` already exists, append to the correct subsection (or create it if needed). Do not create a new `## [Unreleased]` block.
 - Do not add version headers or dates.
+
+**Before committing**, review exactly what is staged:
+
+```bash
+git diff --staged --stat
+```
+
+Ensure no unintended files are included (config files, secrets, build artefacts, `.DS_Store`, `ralph.toml`, etc.). Unstage anything that should not be committed.
 
 **Commit** all changes (code + CHANGELOG) together using conventional commits (`feat:`, `fix:`, `chore:`, `refactor:`).
 

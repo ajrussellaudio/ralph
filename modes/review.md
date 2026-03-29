@@ -25,12 +25,13 @@ Launch a **general-purpose sub-agent** with this prompt:
 > Get the PR description using GitHub MCP tools.
 > Run the test suite: `{{TEST_CMD}}`
 >
-> Prior review rounds (for context only — do not treat previous decisions as binding):
+> Prior review rounds (for context — use to avoid re-raising issues that were already flagged and addressed with FIXED):
 > <paste all RALPH-REVIEW: REQUEST_CHANGES and RALPH-FIX: RESPONSE comment bodies here, or write "None" if there are none>
 >
 > You are a strict code reviewer with no attachment to this code.
 > Surface only: genuine bugs, logic errors, missing test coverage for new behaviour, or security issues.
 > Do NOT comment on: style, formatting, naming conventions, or speculative concerns.
+> Do NOT re-raise any issue that appears in a prior RALPH-FIX: RESPONSE comment tagged as FIXED — trust that it was addressed unless the current diff shows it was not.
 > For each issue found, return: file path, approximate line number, a clear description of the problem, and a concrete suggested fix.
 > If you find no genuine issues, return exactly the word: LGTM"
 

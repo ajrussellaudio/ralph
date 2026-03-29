@@ -30,6 +30,10 @@ Go through each review issue **one by one**. For each issue, investigate whether
 - **If the issue is real:** fix it. Where practical, add or update a test that would have caught the bug (regression test).
 - **If the issue does not exist** (hallucinated, stale, or not applicable): do NOT make speculative changes. Instead, prepare a DISPUTED rebuttal with concrete evidence (e.g. cite the line that already handles it, the test that already covers it, or why the scenario is impossible).
 
+**Only touch code that is directly related to the review issues.** Do not refactor, tidy, or improve unrelated code in the same commit — that makes the diff harder to review and can introduce new problems.
+
+**Never delete or weaken existing tests** to make them pass. If a test is failing, fix the code — not the test.
+
 After addressing all issues, build a **structured summary** tagging each issue as FIXED or DISPUTED:
 
 ```
@@ -43,6 +47,12 @@ If you made any code changes, run `{{TEST_CMD}}` using a sub-agent. Fix any test
 ## Step 4 — Commit, push, and comment
 
 If you made code changes:
+
+```bash
+git diff --staged --stat
+```
+
+Review the staged diff to ensure no unintended files are included before committing:
 
 ```bash
 git add -A
