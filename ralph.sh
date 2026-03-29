@@ -12,7 +12,7 @@
 # Each iteration:
 #   1. Checks GitHub for open ralph PRs or open issues (in bash)
 #   2. Determines which mode to run (implement, review, fix,
-#      force-approve, or merge)
+#      escalate, or merge)
 #   3. Loads the mode-specific prompt from ralph/modes/<mode>.md
 #   4. Substitutes {{REPO}}, {{PR_NUMBER}}, {{ISSUE_NUMBER}}, {{FEATURE_BRANCH}}
 #      placeholders

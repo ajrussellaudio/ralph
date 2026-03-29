@@ -194,7 +194,7 @@ setup() {
   [ "$MODE" = "review" ]
 }
 
-@test "comments: open PR, fix_count=10 → force-approve" {
+@test "comments: open PR, fix_count=10 → escalate" {
   export REVIEW_BACKEND=comments
   export MOCK_PR_LIST_RESPONSE='[{"number":7,"headRefName":"ralph/issue-7"}]'
   export MOCK_PR_VIEW_COMMENTS_RESPONSE='{"comments":[
@@ -213,7 +213,7 @@ setup() {
 
   determine_mode
 
-  [ "$MODE" = "force-approve" ]
+  [ "$MODE" = "escalate" ]
 }
 
 @test "comments: open PR, fix_count=9 (< 10), REQUEST_CHANGES, new commits → review" {

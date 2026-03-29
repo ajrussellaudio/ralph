@@ -4,7 +4,7 @@
 # Sourced by ralph.sh and by bats unit tests (with RALPH_TESTING=1 to skip
 # git-worktree sync).
 #
-# MODE is one of: implement | review | fix | force-approve | merge | complete
+# MODE is one of: implement | review | fix | escalate | merge | complete
 
 # Queries the GitHub API for apps installed on the repo and sets REVIEW_BACKEND
 # to 'copilot' if copilot-pull-request-reviewer is present, otherwise 'comments'.
@@ -28,7 +28,7 @@ detect_review_backend() {
 }
 
 # Populates MODE, PR_NUMBER, ISSUE_NUMBER based on current GitHub state.
-# MODE is one of: implement | review | fix | force-approve | merge | complete
+# MODE is one of: implement | review | fix | escalate | merge | complete
 determine_mode() {
   PR_NUMBER=""
   ISSUE_NUMBER=""
@@ -103,7 +103,7 @@ determine_mode() {
       if [[ "${APPROVED:-0}" -gt 0 ]]; then
         MODE="merge"
       elif [[ "${FIX_COUNT:-0}" -ge 10 ]]; then
-        MODE="force-approve"
+        MODE="escalate"
       elif [[ "${CHANGES_REQUESTED:-0}" -ge 1 ]]; then
         # If commits were pushed after the last REQUEST_CHANGES comment → review
         # Otherwise → fix mode (no new commits yet)

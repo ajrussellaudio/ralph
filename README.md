@@ -9,7 +9,7 @@ Each iteration Ralph:
 2. Checks for open PRs to review, fix, or merge
 3. If none, picks the most important open issue and implements it
 4. Pushes a draft PR (or updates an existing one) and stops — the next iteration reviews it
-5. Loops the review → fix cycle until the code is approved or a force-approve threshold is reached
+5. Loops the review → fix cycle until the code is approved or the escalation threshold is reached
 6. Merges, then moves on to the next issue
 7. Emits `<promise>COMPLETE</promise>` when all issues are closed and all PRs are merged
 

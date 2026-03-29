@@ -22,7 +22,7 @@ flowchart TD
 
     BACKEND -->|HTML comments| CMT{Comment\nsentinels?}
     CMT -->|APPROVED| MERGE
-    CMT -->|fix_count ≥ 10| FORCE[force-approve.md]
+    CMT -->|fix_count ≥ 10| ESCALATE
     CMT -->|REQUEST_CHANGES\n+ new commits since| REVIEW[review.md]
     CMT -->|REQUEST_CHANGES\nno new commits| FIX[fix.md]
     CMT -->|No review yet| REVIEW
@@ -62,7 +62,7 @@ stateDiagram-v2
     awaiting_review --> needs_fix : review ✗\n(REQUEST_CHANGES)
 
     needs_fix --> awaiting_review : fix.md / fix-bot.md\n(fix_count++)
-    needs_fix --> done : force-approve.md / escalate.md\n(fix_count ≥ 10)
+    needs_fix --> done : escalate.md\n(fix_count ≥ 10)
 
     approved --> done : merge.md\n(PR merged, branch deleted, issue closed)
 
