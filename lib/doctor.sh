@@ -36,7 +36,7 @@ ralph_doctor() {
     hard_fail=1
   fi
 
-  # 3. gh authenticated
+  # 3. gh authenticated (only checked when gh is present; missing-gh already reported above)
   if command -v gh >/dev/null 2>&1; then
     if gh auth status >/dev/null 2>&1; then
       echo "  ✅  gh is authenticated"
@@ -45,10 +45,6 @@ ralph_doctor() {
       echo "     → run gh auth login"
       hard_fail=1
     fi
-  else
-    echo "  ❌  gh is not authenticated (gh missing)"
-    echo "     → run gh auth login"
-    hard_fail=1
   fi
 
   # 4. GitHub repo resolvable

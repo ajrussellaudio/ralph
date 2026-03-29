@@ -216,5 +216,12 @@ _make_bin() {
   [ "$check_lines" -eq 9 ]
 }
 
+# ─── Subcommand dispatch integration ──────────────────────────────────────────
+
+@test "ralph.sh doctor: subcommand dispatches correctly, exits 0, prints header" {
+  run "$REPO_ROOT/ralph.sh" doctor
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "🩺 Ralph — doctor"
+}
 
 # ─── All checks pass ──────────────────────────────────────────────────────────
