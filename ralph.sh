@@ -353,6 +353,19 @@ post_merge_cleanup() {
     --jq '.closingIssuesReferences[].number' \
     < /dev/null 2>/dev/null || echo "")
 
+  # closingIssuesReferences is only populated by GitHub when the PR targets the
+  # default branch.  In PRD mode the PR targets feat/<label>, so fall back to
+  # parsing the issue number directly from the branch name (ralph/issue-<N>).
+  if [[ -z "$closed_issues" ]]; then
+    local head_ref
+    head_ref=$(gh pr view "$pr_number" --repo "$REPO" \
+      --json headRefName --jq '.headRefName' \
+      < /dev/null 2>/dev/null || echo "")
+    if [[ "$head_ref" =~ ^ralph/issue-([0-9]+)$ ]]; then
+      closed_issues="${BASH_REMATCH[1]}"
+    fi
+  fi
+
   for issue_num in $closed_issues; do
     gh issue close "$issue_num" --repo "$REPO" < /dev/null 2>/dev/null || true
     echo "  ✅  Closed issue #${issue_num}"
