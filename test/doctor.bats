@@ -167,7 +167,18 @@ _make_bin() {
   [ "$status" -eq 1 ]
   echo "$output" | grep -q "❌.*gh"
   echo "$output" | grep -q "❌.*modes"
-  echo "$output" | grep -q "❌.*repo"
+  # check #4 (repo) is intentionally skipped when gh is absent — no double error
+  echo "$output" | grep -qv "❌.*repo"
+}
+
+@test "doctor: gh absent → check #4 (repo) skipped, no misleading repo error" {
+  _make_bin copilot
+  export REPO=""
+
+  run ralph_doctor
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q "❌.*gh"
+  echo "$output" | grep -qv "❌.*repo"
 }
 
 @test "doctor: all checks run even when first check fails" {

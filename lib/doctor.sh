@@ -47,17 +47,19 @@ ralph_doctor() {
     fi
   fi
 
-  # 4. GitHub repo resolvable
-  local resolved_repo="${REPO:-}"
-  if [[ -z "$resolved_repo" ]]; then
-    resolved_repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || echo "")
-  fi
-  if [[ -n "$resolved_repo" ]]; then
-    echo "  ✅  GitHub repo resolvable: $resolved_repo"
-  else
-    echo "  ❌  GitHub repo not resolvable"
-    echo "     → add repo = \"owner/repo\" to ralph.toml"
-    hard_fail=1
+  # 4. GitHub repo resolvable (only when gh is present; missing-gh already reported above)
+  if command -v gh >/dev/null 2>&1; then
+    local resolved_repo="${REPO:-}"
+    if [[ -z "$resolved_repo" ]]; then
+      resolved_repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || echo "")
+    fi
+    if [[ -n "$resolved_repo" ]]; then
+      echo "  ✅  GitHub repo resolvable: $resolved_repo"
+    else
+      echo "  ❌  GitHub repo not resolvable"
+      echo "     → add repo = \"owner/repo\" to ralph.toml"
+      hard_fail=1
+    fi
   fi
 
   # 5. Modes directory present
