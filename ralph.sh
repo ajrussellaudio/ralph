@@ -117,7 +117,9 @@ if [[ "$SUBCOMMAND" == "status" ]]; then
     exit 0
   fi
 
-  echo "ralph status: not yet implemented"
+  # shellcheck source=lib/status.sh
+  source "$SCRIPT_DIR/lib/status.sh"
+  ralph_status
   exit 0
 fi
 
