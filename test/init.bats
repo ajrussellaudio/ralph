@@ -132,6 +132,41 @@ _run_init() {
   echo "$output" | grep -q "repo"
 }
 
+# ─── Special character escaping ──────────────────────────────────────────────
+
+@test "init: double-quote in repo value is escaped in written file" {
+  _run_init 'org/repo"hack' "" "" "" "Y"
+  [ "$status" -eq 0 ]
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  grep -qF 'repo = "org/repo\"hack"' "$BATS_TEST_TMPDIR/ralph.toml"
+}
+
+@test "init: backslash in test value is escaped in written file" {
+  _run_init "" "" "" 'npm run test\spec' "Y"
+  [ "$status" -eq 0 ]
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  grep -qF 'test = "npm run test\\spec"' "$BATS_TEST_TMPDIR/ralph.toml"
+}
+
+# ─── Overwrite protection ─────────────────────────────────────────────────────
+
+@test "init: existing ralph.toml → warns user, keeps file if declined" {
+  echo "# existing" > "$BATS_TEST_TMPDIR/ralph.toml"
+  run ralph_init <<< "$(printf '%s\n' "" "" "" "" "Y" "n")"
+  [ "$status" -eq 0 ]
+  grep -q "# existing" "$BATS_TEST_TMPDIR/ralph.toml"
+  echo "$output" | grep -q "already exists"
+}
+
+@test "init: existing ralph.toml → overwrites when user confirms" {
+  echo "# existing" > "$BATS_TEST_TMPDIR/ralph.toml"
+  run ralph_init <<< "$(printf '%s\n' "" "" "" "" "Y" "y")"
+  [ "$status" -eq 0 ]
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  ! grep -q "# existing" "$BATS_TEST_TMPDIR/ralph.toml"
+  grep -q 'repo = "' "$BATS_TEST_TMPDIR/ralph.toml"
+}
+
 # ─── ralph_doctor called after successful write ───────────────────────────────
 
 @test "init: ralph_doctor called after successful write (or nudge printed)" {

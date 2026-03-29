@@ -60,6 +60,13 @@ ralph_init() {
   local test_value
   read -r test_value
 
+  # ── Sanitize values for TOML string interpolation (escape \ then ") ─────────
+
+  local repo_safe="${repo_value//\\/\\\\}";         repo_safe="${repo_safe//\"/\\\"}"
+  local upstream_safe="${upstream_value//\\/\\\\}"; upstream_safe="${upstream_safe//\"/\\\"}"
+  local build_safe="${build_value//\\/\\\\}";       build_safe="${build_safe//\"/\\\"}"
+  local test_safe="${test_value//\\/\\\\}";         test_safe="${test_safe//\"/\\\"}"
+
   # ── File preview ─────────────────────────────────────────────────────────────
 
   local file_contents
@@ -68,19 +75,19 @@ ralph_init() {
 # Copy this file to ralph.toml at your project root and fill in the values.
 
 # GitHub repo slug (owner/repo). Optional — Ralph infers it from \`gh repo view\`.
-repo = "${repo_value}"
+repo = "${repo_safe}"
 
 # Upstream repo slug (owner/repo). Optional — for fork-based workflows where
 # Ralph does all his work on your fork but the final feature PR should land on
 # the upstream repo. Defaults to \`repo\` when not set (personal project behaviour
 # unchanged).
-upstream = "${upstream_value}"
+upstream = "${upstream_safe}"
 
 # Build command — leave empty if no build step.
-build = "${build_value}"
+build = "${build_safe}"
 
 # Test command — required.
-test = "${test_value}"
+test = "${test_safe}"
 TOML
 )
 
@@ -109,6 +116,19 @@ TOML
   # ── Write file ───────────────────────────────────────────────────────────────
 
   local output_path="${INIT_OUTPUT_DIR:-$GIT_ROOT}/ralph.toml"
+
+  if [[ -f "$output_path" ]]; then
+    echo ""
+    printf "  ⚠️  %s already exists. Overwrite? [y/N] " "$output_path"
+    local overwrite_value
+    read -r overwrite_value
+    if [[ ! "$overwrite_value" =~ ^[Yy]$ ]]; then
+      echo ""
+      echo "  Aborted. Existing file kept."
+      return 0
+    fi
+  fi
+
   printf '%s\n' "$file_contents" > "$output_path"
 
   echo ""
