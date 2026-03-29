@@ -97,12 +97,14 @@ ralph_doctor() {
     echo "     → add build = \"...\" to ralph.toml if a build step is needed"
   fi
 
-  # 9. GitHub API reachable
-  if gh api /rate_limit >/dev/null 2>&1; then
-    echo "  ✅  GitHub API reachable"
-  else
-    echo "  ⚠️   GitHub API unreachable"
-    echo "     → check network connectivity"
+  # 9. GitHub API reachable (only when gh is present; missing-gh already reported above)
+  if command -v gh >/dev/null 2>&1; then
+    if gh api /rate_limit >/dev/null 2>&1; then
+      echo "  ✅  GitHub API reachable"
+    else
+      echo "  ⚠️   GitHub API unreachable"
+      echo "     → check network connectivity"
+    fi
   fi
 
   echo ""
