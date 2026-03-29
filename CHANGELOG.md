@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Subcommand dispatch: `ralph run` starts the agent loop, `ralph status` prints a status stub, `ralph` with no args defaults to `ralph status` (#111)
+- Migration error for run-style flags without a subcommand (e.g. `ralph --label=foo`): exits non-zero with a message directing the user to `ralph run` (#111)
+- Usage error for unrecognised subcommands (e.g. `ralph unknown`) (#111)
+- New `test/arg-parsing.bats` tests covering all subcommand routing cases (#111)
 - `--max-iterations=N` optional named flag to `ralph.sh`; when omitted Ralph runs in an unlimited `while true` loop until a clean exit condition is reached (#89)
 - Migration error message when a bare positional integer is passed (old interface): `"The positional <max_iterations> argument has been removed. Use --max-iterations=N instead."` (#89)
 - `RALPH_PARSE_ONLY=1` test hook in `ralph.sh` to allow arg-parsing bats tests without requiring a full preflight environment (#89)
