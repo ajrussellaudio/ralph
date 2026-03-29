@@ -108,6 +108,16 @@ _make_bin() {
   echo "$output" | grep -q "→.*ralph.toml"
 }
 
+@test "doctor: explicit REPO set but gh repo view fails → ❌ and exit 1" {
+  export REPO="typo/nonexistent"
+  export MOCK_REPO_VIEW_EXIT=1
+
+  run ralph_doctor
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q "❌.*repo"
+  echo "$output" | grep -q "→.*ralph.toml"
+}
+
 @test "doctor: modes directory missing → ❌ line with fix hint and exit 1" {
   export MODES_DIR="/nonexistent/modes/dir"
 

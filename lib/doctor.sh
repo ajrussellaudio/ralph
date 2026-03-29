@@ -53,11 +53,12 @@ ralph_doctor() {
     if [[ -z "$resolved_repo" ]]; then
       resolved_repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || echo "")
     fi
-    if [[ -n "$resolved_repo" ]]; then
+    # Validate the repo actually exists on GitHub, whether set explicitly or inferred.
+    if [[ -n "$resolved_repo" ]] && gh repo view "$resolved_repo" >/dev/null 2>&1; then
       echo "  ✅  GitHub repo resolvable: $resolved_repo"
     else
       echo "  ❌  GitHub repo not resolvable"
-      echo "     → add repo = \"owner/repo\" to ralph.toml"
+      echo "     → set REPO in ralph.toml or run from a git repo"
       hard_fail=1
     fi
   fi
