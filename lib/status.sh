@@ -18,7 +18,7 @@ ralph_status() {
     --base "$FEATURE_BRANCH" \
     --json number,headRefName,reviewDecision,statusCheckRollup \
     --jq '[.[] | select(.headRefName | startswith("ralph/issue-"))] | sort_by(.number)' \
-    < /dev/null 2>/dev/null || echo "[]")
+    < /dev/null 2>&1) || { echo "  ⚠️  gh pr list failed: $prs_json"; return 1; }
 
   local pr_count
   pr_count=$(echo "$prs_json" | jq 'length')
@@ -34,7 +34,7 @@ ralph_status() {
      else "PENDING ⏳"
      end) as $review |
     (if (.statusCheckRollup == null or (.statusCheckRollup | length) == 0) then "pending ⏳"
-     elif (.statusCheckRollup | any(.conclusion == "FAILURE" or .conclusion == "TIMED_OUT")) then "failing ❌"
+     elif (.statusCheckRollup | any(.conclusion == "FAILURE" or .conclusion == "TIMED_OUT" or .conclusion == "CANCELLED" or .conclusion == "ACTION_REQUIRED" or .conclusion == "STARTUP_FAILURE")) then "failing ❌"
      elif (.statusCheckRollup | any(.status != "COMPLETED")) then "pending ⏳"
      else "passing ✅"
      end) as $ci |

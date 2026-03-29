@@ -21,6 +21,8 @@ setup() {
 
   # Clear all mock env vars so tests start from a clean slate.
   unset MOCK_PR_LIST_RESPONSE || true
+  unset MOCK_PR_LIST_EXIT || true
+  unset MOCK_PR_LIST_ERROR || true
 }
 
 # ─── Header ───────────────────────────────────────────────────────────────────
@@ -126,4 +128,60 @@ setup() {
   pr8_lines=$(echo "$output" | grep -c "ralph/issue-8" || true)
   [ "$pr3_lines" -ge 1 ]
   [ "$pr8_lines" -ge 1 ]
+}
+
+# ─── CI: cancelled/action-required/startup-failure → failing ─────────────────
+
+@test "status: CI with CANCELLED conclusion → shows failing" {
+  export MOCK_PR_LIST_RESPONSE='[{
+    "number": 20,
+    "headRefName": "ralph/issue-20",
+    "reviewDecision": null,
+    "statusCheckRollup": [
+      {"conclusion": "CANCELLED", "status": "COMPLETED"},
+      {"conclusion": "SUCCESS", "status": "COMPLETED"}
+    ]
+  }]'
+  run ralph_status
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "failing"
+}
+
+@test "status: CI with ACTION_REQUIRED conclusion → shows failing" {
+  export MOCK_PR_LIST_RESPONSE='[{
+    "number": 21,
+    "headRefName": "ralph/issue-21",
+    "reviewDecision": null,
+    "statusCheckRollup": [
+      {"conclusion": "ACTION_REQUIRED", "status": "COMPLETED"}
+    ]
+  }]'
+  run ralph_status
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "failing"
+}
+
+@test "status: CI with STARTUP_FAILURE conclusion → shows failing" {
+  export MOCK_PR_LIST_RESPONSE='[{
+    "number": 22,
+    "headRefName": "ralph/issue-22",
+    "reviewDecision": null,
+    "statusCheckRollup": [
+      {"conclusion": "STARTUP_FAILURE", "status": "COMPLETED"}
+    ]
+  }]'
+  run ralph_status
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "failing"
+}
+
+# ─── gh pr list failure → surfaces error ─────────────────────────────────────
+
+@test "status: gh pr list failure → shows error and returns non-zero" {
+  export MOCK_PR_LIST_EXIT=1
+  export MOCK_PR_LIST_ERROR="could not authenticate: token expired"
+  run ralph_status
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -q "gh pr list failed"
+  echo "$output" | grep -q "token expired"
 }
