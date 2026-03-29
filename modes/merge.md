@@ -108,3 +108,5 @@ For each blocked issue, check whether its body contains `Blocked by #<X>` (case-
 Emit this token as your **final output** and end your response immediately:
 
 <promise>STOP</promise>
+
+Any output after this token violates the rules.

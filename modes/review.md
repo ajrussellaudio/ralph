@@ -39,9 +39,13 @@ Launch a **general-purpose sub-agent** with this prompt:
 
 <promise>STOP</promise>
 
+Any output after this token violates the rules.
+
 **If issues found:** post a REQUEST_CHANGES comment (see below), then emit the following token as your **final output** and end your response immediately:
 
 <promise>STOP</promise>
+
+Any output after this token violates the rules.
 
 ## Comment formats
 

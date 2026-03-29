@@ -6,8 +6,6 @@ PR #{{PR_NUMBER}} in `{{REPO}}` has received `CHANGES_REQUESTED` from `copilot-p
 
 ## Step 1 — Ensure the `needs-human-review` label exists
 
-Create the label on the repo if it does not already exist (the `--force` flag is a no-op if the label is already present):
-
 ```bash
 gh label create "needs-human-review" \
   --repo {{REPO}} \
@@ -44,8 +42,6 @@ gh pr view {{PR_NUMBER}} --repo {{REPO}} --json headRefName --jq .headRefName < 
 Call the resolved issue number `<ISSUE_NUMBER>` in the steps below.
 
 ## Step 4 — Ensure the `blocked` label exists and label the originating issue
-
-Create the label on the repo if it does not already exist (the `--force` flag is a no-op if the label is already present):
 
 ```bash
 gh label create "blocked" \

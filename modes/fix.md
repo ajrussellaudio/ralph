@@ -81,3 +81,5 @@ rm /tmp/ralph-fix-response.md
 Emit the following token as your **final output** and end your response immediately:
 
 <promise>STOP</promise>
+
+Any output after this token violates the rules.
