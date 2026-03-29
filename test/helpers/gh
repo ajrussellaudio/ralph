@@ -14,6 +14,11 @@
 #   MOCK_PR_VIEW_COMMITS_RESPONSE   JSON for: gh pr view --json commits
 #   MOCK_ISSUE_LIST_RESPONSE      JSON for: gh issue list
 #   MOCK_ISSUE_VIEW_RESPONSE      JSON for: gh issue view <N> --json state
+#
+#   MOCK_AUTH_STATUS_EXIT         Non-zero to simulate unauthenticated (default 0)
+#   MOCK_REPO_VIEW_RESPONSE       JSON for: gh repo view --json nameWithOwner
+#   MOCK_REPO_VIEW_EXIT           Non-zero to simulate inference failure (default 0)
+#   MOCK_RATE_LIMIT_EXIT          Non-zero to simulate API unreachable (default 0)
 
 set -euo pipefail
 
@@ -66,7 +71,17 @@ case "$CMD" in
       apply_jq "$MOCK_APPS_RESPONSE"
     elif [[ "$ENDPOINT" == *"/reviews" ]]; then
       apply_jq "$MOCK_REVIEWS_RESPONSE"
+    elif [[ "$ENDPOINT" == "/rate_limit" ]]; then
+      [[ "${MOCK_RATE_LIMIT_EXIT:-0}" == "0" ]] || exit "${MOCK_RATE_LIMIT_EXIT}"
+      echo '{}'
     fi
+    ;;
+  auth)
+    case "$SUBCMD" in
+      status)
+        [[ "${MOCK_AUTH_STATUS_EXIT:-0}" == "0" ]] || exit "${MOCK_AUTH_STATUS_EXIT}"
+        ;;
+    esac
     ;;
   pr)
     case "$SUBCMD" in
@@ -84,6 +99,16 @@ case "$CMD" in
         else
           apply_jq "$MOCK_PR_VIEW_COMMENTS_RESPONSE"
         fi
+        ;;
+    esac
+    ;;
+  repo)
+    case "$SUBCMD" in
+      view)
+        [[ "${MOCK_REPO_VIEW_EXIT:-0}" == "0" ]] || exit "${MOCK_REPO_VIEW_EXIT}"
+        _default_repo_view='{"nameWithOwner":"owner/repo"}'
+        MOCK_REPO_VIEW_RESPONSE="${MOCK_REPO_VIEW_RESPONSE:-$_default_repo_view}"
+        apply_jq "$MOCK_REPO_VIEW_RESPONSE"
         ;;
     esac
     ;;

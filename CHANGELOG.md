@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `lib/doctor.sh` with `ralph_doctor()`: audits 9 environment checks (copilot in PATH, gh in PATH, gh authenticated, repo resolvable, modes directory present, ralph.toml present, test/build commands configured, GitHub API reachable); prints ✅/⚠️/❌ per check with fix hints; exits 0 if no hard failures, 1 if any occur (#117)
+- `ralph doctor` subcommand dispatched from `ralph.sh` (#117)
+- `test/doctor.bats`: bats tests covering all-pass, each hard failure in isolation, each warning in isolation, multiple simultaneous failures, mix of warnings and failures, and exit code behaviour (#117)
+
 - `ralph status` issues section: lists all open in-scope issues with number and title; blocked issues marked with ⚠️; placeholder shown when none (#113)
 - `ralph status --label=foo` filters issues to those labelled `prd/foo`; without `--label`, shows all issues excluding `prd/*`-labelled ones (#113)
 - `ralph status --label=foo` feature PR section: shows the `feat/foo` → main aggregate PR (number, branch, review state, CI) when one exists; omitted entirely when none (#113)
