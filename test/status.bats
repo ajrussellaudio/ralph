@@ -185,3 +185,99 @@ setup() {
   echo "$output" | grep -q "gh pr list failed"
   echo "$output" | grep -q "token expired"
 }
+
+# ─── Issues section ───────────────────────────────────────────────────────────
+
+@test "status: issues section appears in output" {
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_ISSUE_LIST_RESPONSE='[]'
+  run ralph_status
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "Issues"
+}
+
+@test "status: no open issues → shows placeholder" {
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_ISSUE_LIST_RESPONSE='[]'
+  run ralph_status
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "no open issues"
+}
+
+@test "status: open issue → shows number and title" {
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_ISSUE_LIST_RESPONSE='[{"number": 42, "title": "Fix the widget", "labels": []}]'
+  run ralph_status
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "42"
+  echo "$output" | grep -q "Fix the widget"
+}
+
+@test "status: blocked issue → shows warning indicator" {
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_ISSUE_LIST_RESPONSE='[{"number": 7, "title": "Blocked task", "labels": [{"name": "blocked"}]}]'
+  run ralph_status
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "7"
+  echo "$output" | grep -q "Blocked task"
+  echo "$output" | grep -q "⚠️"
+}
+
+@test "status: non-blocked issue → no warning indicator" {
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_ISSUE_LIST_RESPONSE='[{"number": 8, "title": "Normal task", "labels": []}]'
+  run ralph_status
+  [ "$status" -eq 0 ]
+  issue_line=$(echo "$output" | grep "Normal task")
+  echo "$issue_line" | grep -qv "⚠️"
+}
+
+@test "status: multiple issues → each appears on its own line" {
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_ISSUE_LIST_RESPONSE='[
+    {"number": 3, "title": "First task", "labels": []},
+    {"number": 9, "title": "Second task", "labels": [{"name": "blocked"}]}
+  ]'
+  run ralph_status
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "First task"
+  echo "$output" | grep -q "Second task"
+  echo "$output" | grep -q "⚠️"
+}
+
+# ─── Feature PR section ───────────────────────────────────────────────────────
+
+@test "status: --label set, feature PR exists → shows feature PR section" {
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_ISSUE_LIST_RESPONSE='[]'
+  export MOCK_FEATURE_PR_LIST_RESPONSE='[{
+    "number": 100,
+    "headRefName": "feat/my-feature",
+    "reviewDecision": "APPROVED",
+    "statusCheckRollup": [{"conclusion": "SUCCESS", "status": "COMPLETED"}]
+  }]'
+  run ralph_status
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "Feature PR"
+  echo "$output" | grep -q "100"
+  echo "$output" | grep -q "feat/my-feature"
+}
+
+@test "status: --label set, no feature PR → feature PR section absent" {
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_ISSUE_LIST_RESPONSE='[]'
+  export MOCK_FEATURE_PR_LIST_RESPONSE='[]'
+  run ralph_status
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -qv "Feature PR"
+}
+
+@test "status: no --label flag → feature PR section absent" {
+  export FEATURE_LABEL=""
+  export FEATURE_BRANCH="main"
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_ISSUE_LIST_RESPONSE='[]'
+  run ralph_status
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -qv "Feature PR"
+}
