@@ -61,49 +61,9 @@ Find all open `ralph/issue-*` PRs with a PR number greater than {{PR_NUMBER}} th
 - **If there are conflicts:** attempt to resolve them — read the conflicting files, understand what both sides are doing, and apply the resolution that preserves both sets of changes. Run tests to verify. If tests pass, continue the rebase and push.
 - **If you cannot resolve a conflict confidently** (e.g. tests keep failing, or the conflict is in generated/binary files): run `git rebase --abort`, open a GitHub issue titled `⚠️ Downstream rebase conflict: ralph/issue-<M>` describing the conflicting files, and stop.
 
-## Step 5 — Close the implemented issue
+## Step 5 — Stop
 
-GitHub only auto-closes issues referenced with `Closes #N` when a PR merges into the **default branch**. When merging into a feature branch, the issue must be closed explicitly.
-
-Look up the issue(s) closed by this PR:
-
-```bash
-gh pr view {{PR_NUMBER}} --repo {{REPO}} --json closingIssuesReferences --jq '.closingIssuesReferences[].number' < /dev/null
-```
-
-Close each one:
-
-```bash
-gh issue close <N> --repo {{REPO}} < /dev/null
-```
-
-## Step 6 — Unblock issues
-
-Fetch all open issues that carry the `blocked` label:
-
-```bash
-gh issue list --repo {{REPO}} --label blocked --json number,body --limit 100 < /dev/null
-```
-
-The issue closed by this PR is the one referenced in the PR body as `Closes #<X>`. Look it up with:
-
-```bash
-gh pr view {{PR_NUMBER}} --repo {{REPO}} --json closingIssuesReferences --jq '.closingIssuesReferences[].number' < /dev/null
-```
-
-For each blocked issue, check whether its body contains `Blocked by #<X>` (case-insensitive). If it does:
-
-- Inspect the body for **any other** `Blocked by #Y` references.
-- For each such `#Y`, check whether issue `#Y` is still open:
-  ```bash
-  gh issue view <Y> --repo {{REPO}} --json state --jq .state < /dev/null
-  ```
-- If **all** blocking issues are now closed, remove the `blocked` label:
-  ```bash
-  gh issue edit <N> --repo {{REPO}} --remove-label "blocked" < /dev/null
-  ```
-
-## Step 7 — Stop
+Issue close and unblock are handled automatically by the outer loop after you stop.
 
 Emit this token as your **final output** and end your response immediately:
 

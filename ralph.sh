@@ -260,9 +260,17 @@ build_prompt() {
     exit 1
   fi
 
+  # Pre-resolve the PR branch name so mode files don't need to look it up.
+  local pr_branch=""
+  if [[ -n "$PR_NUMBER" ]]; then
+    pr_branch=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+      --json headRefName --jq '.headRefName' < /dev/null 2>/dev/null || echo "")
+  fi
+
   PROMPT=$(cat "$mode_file")
   PROMPT="${PROMPT//\{\{REPO\}\}/$REPO}"
   PROMPT="${PROMPT//\{\{PR_NUMBER\}\}/$PR_NUMBER}"
+  PROMPT="${PROMPT//\{\{PR_BRANCH\}\}/$pr_branch}"
   PROMPT="${PROMPT//\{\{ISSUE_NUMBER\}\}/$ISSUE_NUMBER}"
   PROMPT="${PROMPT//\{\{BUILD_CMD\}\}/$BUILD_CMD}"
   PROMPT="${PROMPT//\{\{TEST_CMD\}\}/$TEST_CMD}"
@@ -271,6 +279,70 @@ build_prompt() {
   PROMPT="${PROMPT//\{\{REVIEW_BACKEND\}\}/$REVIEW_BACKEND}"
   PROMPT="${PROMPT//\{\{UPSTREAM_REPO\}\}/$UPSTREAM_REPO}"
   PROMPT="${PROMPT//\{\{FORK_OWNER\}\}/$FORK_OWNER}"
+}
+
+# ── Post-merge bookkeeping ────────────────────────────────────────────────────
+
+# Closes issues linked to a merged PR and removes the `blocked` label from any
+# issue whose blockers are now all closed.  Runs after a merge-mode iteration.
+post_merge_cleanup() {
+  local pr_number="$1"
+
+  local pr_state
+  pr_state=$(gh pr view "$pr_number" --repo "$REPO" \
+    --json state --jq '.state' < /dev/null 2>/dev/null || echo "")
+  [[ "$pr_state" == "MERGED" ]] || return 0
+
+  local closed_issues
+  closed_issues=$(gh pr view "$pr_number" --repo "$REPO" \
+    --json closingIssuesReferences \
+    --jq '.closingIssuesReferences[].number' \
+    < /dev/null 2>/dev/null || echo "")
+
+  for issue_num in $closed_issues; do
+    gh issue close "$issue_num" --repo "$REPO" < /dev/null 2>/dev/null || true
+    echo "  ✅  Closed issue #${issue_num}"
+  done
+
+  [[ -n "$closed_issues" ]] || return 0
+
+  local blocked_json
+  blocked_json=$(gh issue list --repo "$REPO" --label blocked \
+    --json number,body --limit 100 \
+    < /dev/null 2>/dev/null || echo "[]")
+
+  local unblock_script
+  unblock_script=$(mktemp)
+  cat > "$unblock_script" << 'EOF'
+import sys, json, subprocess, re
+
+repo        = sys.argv[1]
+just_closed = {int(x) for x in sys.argv[2:]}
+issues      = json.load(sys.stdin)
+
+for issue in issues:
+    body     = issue.get("body") or ""
+    blockers = {int(m) for m in re.findall(r'[Bb]locked by #(\d+)', body)}
+    if not blockers & just_closed:
+        continue
+    all_done = all(
+        b in just_closed or subprocess.run(
+            ["gh", "issue", "view", str(b), "--repo", repo,
+             "--json", "state", "--jq", ".state"],
+            capture_output=True, text=True, stdin=subprocess.DEVNULL
+        ).stdout.strip() == "CLOSED"
+        for b in blockers
+    )
+    if all_done:
+        subprocess.run(
+            ["gh", "issue", "edit", str(issue["number"]),
+             "--repo", repo, "--remove-label", "blocked"],
+            stdin=subprocess.DEVNULL
+        )
+        print(f"  🔓  Unblocked issue #{issue['number']}")
+EOF
+  echo "$blocked_json" | python3 "$unblock_script" "$REPO" $closed_issues
+  rm -f "$unblock_script"
 }
 
 # ── Startup detection ─────────────────────────────────────────────────────────
@@ -356,6 +428,9 @@ run_loop() {
   fi
 
   if echo "$OUTPUT" | grep -q "<promise>STOP</promise>"; then
+    if [[ "$MODE" == "merge" ]]; then
+      post_merge_cleanup "$PR_NUMBER"
+    fi
     echo ""
     if [[ -n "$MAX_ITERATIONS" ]]; then
       echo "  ✔  Iteration $i / $MAX_ITERATIONS done — restarting"

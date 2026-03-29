@@ -32,12 +32,7 @@ gh pr view {{PR_NUMBER}} --repo {{REPO}} \
   < /dev/null
 ```
 
-If that returns nothing, fall back to parsing the branch name:
-
-```bash
-gh pr view {{PR_NUMBER}} --repo {{REPO}} --json headRefName --jq .headRefName < /dev/null
-# Branch is ralph/issue-<N> — extract N from the name
-```
+If that returns nothing, fall back to parsing the branch name — it is `{{PR_BRANCH}}`, which follows the `ralph/issue-<N>` convention.
 
 Call the resolved issue number `<ISSUE_NUMBER>` in the steps below.
 

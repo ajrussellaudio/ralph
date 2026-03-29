@@ -19,14 +19,8 @@ Read every comment — you must address all of them in one pass.
 ## Step 2 — Check out the branch
 
 ```bash
-gh pr view {{PR_NUMBER}} --repo {{REPO}} --json headRefName --jq .headRefName < /dev/null
-```
-
-Then check it out:
-
-```bash
 git fetch origin
-git checkout <branch-name>
+git checkout {{PR_BRANCH}}
 ```
 
 ## Step 3 — Fix each comment
@@ -40,7 +34,7 @@ After fixing all comments, run `{{TEST_CMD}}` using a sub-agent. Fix any test fa
 ```bash
 git add -A
 git commit -m "fix: address Copilot bot review comments on PR #{{PR_NUMBER}}"
-git push origin <branch-name>
+git push origin {{PR_BRANCH}}
 ```
 
 ## Step 5 — Post a fix-round marker comment

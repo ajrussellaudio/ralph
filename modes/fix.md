@@ -10,17 +10,9 @@ Use `gh pr view {{PR_NUMBER}} --repo {{REPO}} --comments` or GitHub MCP tools to
 
 ## Step 2 — Check out the branch
 
-Look up the branch name:
-
-```bash
-gh pr view {{PR_NUMBER}} --repo {{REPO}} --json headRefName --jq .headRefName < /dev/null
-```
-
-Then check it out:
-
 ```bash
 git fetch origin
-git checkout <branch-name>
+git checkout {{PR_BRANCH}}
 ```
 
 ## Step 3 — Investigate, address, and test each issue
@@ -57,7 +49,7 @@ Review the staged diff to ensure no unintended files are included before committ
 ```bash
 git add -A
 git commit -m "fix: address review comments on PR #{{PR_NUMBER}}"
-git push origin <branch-name>
+git push origin {{PR_BRANCH}}
 ```
 
 If all issues were DISPUTED (no code changes), skip the commit and push above.
