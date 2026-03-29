@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `lib/status.sh` with `ralph_status()`: prints open `ralph/issue-*` PRs with review state (APPROVED ✅ / CHANGES_REQUESTED 🔄 / PENDING ⏳) and CI status (passing ✅ / failing ❌ / pending ⏳); shows a placeholder when there are no open PRs (#112)
+- `test/status.bats`: 6 bats tests covering approved+passing CI, changes-requested+failing CI, pending review+pending CI, multiple PRs, no open PRs, and header output (#112)
 - Subcommand dispatch: `ralph run` starts the agent loop, `ralph status` prints a status stub, `ralph` with no args defaults to `ralph status` (#111)
 - Migration error for run-style flags without a subcommand (e.g. `ralph --label=foo`): exits non-zero with a message directing the user to `ralph run` (#111)
 - Usage error for unrecognised subcommands (e.g. `ralph unknown`) (#111)
