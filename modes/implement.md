@@ -12,6 +12,7 @@ You are implementing GitHub issue #{{ISSUE_NUMBER}} in the `{{REPO}}` repository
 ## Step 2 — Implement
 
 - Check out a new branch: `git checkout -b ralph/issue-{{ISSUE_NUMBER}}`
+- Where practical, write tests before implementation (red → green). Tests should verify behaviour through public interfaces, not implementation details.
 - Implement everything required to satisfy all acceptance criteria.
 - Delegate expensive work to sub-agents where possible (running the test suite, reading large files, summarising command output) to keep your primary context window lean.
 

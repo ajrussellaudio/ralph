@@ -23,11 +23,11 @@ git fetch origin
 git checkout <branch-name>
 ```
 
-## Step 3 — Investigate and address each issue
+## Step 3 — Investigate, address, and test each issue
 
 Go through each review issue **one by one**. For each issue, investigate whether it is a genuine problem in the code:
 
-- **If the issue is real:** fix it.
+- **If the issue is real:** fix it. Where practical, add or update a test that would have caught the bug (regression test).
 - **If the issue does not exist** (hallucinated, stale, or not applicable): do NOT make speculative changes. Instead, prepare a DISPUTED rebuttal with concrete evidence (e.g. cite the line that already handles it, the test that already covers it, or why the scenario is impossible).
 
 After addressing all issues, build a **structured summary** tagging each issue as FIXED or DISPUTED:
