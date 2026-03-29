@@ -69,10 +69,64 @@ fi
 # Derive the fork owner from the owner prefix of $REPO (e.g. "you" from "you/project").
 FORK_OWNER="${REPO%%/*}"
 
-# ── Argument validation ────────────────────────────────────────────────────────
+# ── Subcommand dispatch ────────────────────────────────────────────────────────
+
+SUBCOMMAND=""
+if [[ $# -eq 0 ]]; then
+  SUBCOMMAND="status"
+elif [[ "$1" == "run" ]]; then
+  SUBCOMMAND="run"
+  shift
+elif [[ "$1" == "status" ]]; then
+  SUBCOMMAND="status"
+  shift
+elif [[ "$1" =~ ^-- ]]; then
+  echo "Error: '$1' requires a subcommand. Did you mean: ralph run $*"
+  echo "Use 'ralph run' to start the agent loop."
+  exit 1
+else
+  echo "Error: Unknown subcommand '$1'."
+  echo ""
+  echo "Usage: $(basename "$0") <subcommand> [flags]"
+  echo ""
+  echo "Subcommands:"
+  echo "  run     Start the Copilot agent loop"
+  echo "  status  Show status of the current feature"
+  exit 1
+fi
+
+# ── Status handler ─────────────────────────────────────────────────────────────
+
+if [[ "$SUBCOMMAND" == "status" ]]; then
+  FEATURE_LABEL=""
+  FEATURE_BRANCH="main"
+
+  for arg in "$@"; do
+    if [[ "$arg" =~ ^--label=(.+)$ ]]; then
+      FEATURE_LABEL="prd/${BASH_REMATCH[1]}"
+      FEATURE_BRANCH="feat/${BASH_REMATCH[1]}"
+    else
+      echo "Usage: $(basename "$0") status [--label=<label>]"
+      exit 1
+    fi
+  done
+
+  if [[ "${RALPH_PARSE_ONLY:-}" == "1" ]]; then
+    echo "SUBCOMMAND=status"
+    echo "FEATURE_BRANCH=${FEATURE_BRANCH}"
+    exit 0
+  fi
+
+  # shellcheck source=lib/status.sh
+  source "$SCRIPT_DIR/lib/status.sh"
+  ralph_status
+  exit 0
+fi
+
+# ── Argument validation (run subcommand) ───────────────────────────────────────
 
 usage() {
-  echo "Usage: $(basename "$0") [--max-iterations=N] [--label=<label>] [--issue=<N>]"
+  echo "Usage: $(basename "$0") run [--max-iterations=N] [--label=<label>] [--issue=<N>]"
   echo ""
   echo "  --max-iterations=N  Optional positive integer — how many Copilot iterations"
   echo "                      to allow before giving up. When omitted, Ralph runs"
@@ -88,10 +142,10 @@ usage() {
   echo "                      feature PR."
   echo ""
   echo "Examples:"
-  echo "  $(basename "$0")"
-  echo "  $(basename "$0") --label=foo-widget"
-  echo "  $(basename "$0") --max-iterations=20 --label=foo-widget"
-  echo "  $(basename "$0") --max-iterations=20 --issue=82 --label=foo-widget"
+  echo "  $(basename "$0") run"
+  echo "  $(basename "$0") run --label=foo-widget"
+  echo "  $(basename "$0") run --max-iterations=20 --label=foo-widget"
+  echo "  $(basename "$0") run --max-iterations=20 --issue=82 --label=foo-widget"
 }
 
 MAX_ITERATIONS=""

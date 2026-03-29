@@ -8,6 +8,7 @@
 #   MOCK_APPS_EXIT                Non-zero exit code to simulate API failure
 #   MOCK_REVIEWS_RESPONSE         JSON for: gh api .../reviews
 #   MOCK_PR_LIST_RESPONSE         JSON for: gh pr list  (ralph branch PRs)
+#   MOCK_PR_LIST_EXIT             Non-zero exit code to simulate pr list failure
 #   MOCK_FEATURE_PR_LIST_RESPONSE JSON for: gh pr list --head <branch>  (feat PR check)
 #   MOCK_PR_VIEW_COMMENTS_RESPONSE  JSON for: gh pr view --json comments
 #   MOCK_PR_VIEW_COMMITS_RESPONSE   JSON for: gh pr view --json commits
@@ -73,6 +74,7 @@ case "$CMD" in
         if [[ "$HAS_HEAD" == "true" ]]; then
           apply_jq "$MOCK_FEATURE_PR_LIST_RESPONSE"
         else
+          [[ "${MOCK_PR_LIST_EXIT:-0}" == "0" ]] || { echo "${MOCK_PR_LIST_ERROR:-gh pr list error}"; exit "${MOCK_PR_LIST_EXIT}"; }
           apply_jq "$MOCK_PR_LIST_RESPONSE"
         fi
         ;;
