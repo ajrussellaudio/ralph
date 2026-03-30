@@ -25,7 +25,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}")")" && pwd)"
 GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-WORKTREE_DIR="${GIT_ROOT%/*}/$(basename "$GIT_ROOT")-ralph-workspace"
 
 # Modes: local project override (ralph/modes/) takes precedence over bundled modes.
 if [[ -d "$GIT_ROOT/ralph/modes" ]]; then
@@ -216,6 +215,14 @@ if [[ "${RALPH_PARSE_ONLY:-}" == "1" ]]; then
   echo "FEATURE_BRANCH=${FEATURE_BRANCH}"
   echo "PINNED_ISSUE=${PINNED_ISSUE}"
   exit 0
+fi
+
+# Derive the worktree path. Include the PRD slug when --label is set so
+# multiple ralph runs can coexist in parallel on the same machine.
+if [[ -n "$FEATURE_LABEL" ]]; then
+  WORKTREE_DIR="${GIT_ROOT%/*}/$(basename "$GIT_ROOT")-ralph-${FEATURE_BRANCH#feat/}"
+else
+  WORKTREE_DIR="${GIT_ROOT%/*}/$(basename "$GIT_ROOT")-ralph-workspace"
 fi
 
 # ── Preflight checks (via ralph_doctor) ───────────────────────────────────────
