@@ -15,7 +15,7 @@ set -euo pipefail
 MOCK_GH_FAIL_TIMES="${MOCK_GH_FAIL_TIMES:-0}"
 MOCK_GH_STDOUT="${MOCK_GH_STDOUT:-}"
 MOCK_GH_EXIT="${MOCK_GH_EXIT:-1}"
-MOCK_GH_COUNTER_FILE="${MOCK_GH_COUNTER_FILE:-/tmp/mock_gh_counter}"
+MOCK_GH_COUNTER_FILE="${MOCK_GH_COUNTER_FILE:-${TMPDIR:-/tmp}/mock_gh_counter_$$}"
 
 # Increment counter
 if [[ -f "$MOCK_GH_COUNTER_FILE" ]]; then
