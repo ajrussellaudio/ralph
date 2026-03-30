@@ -31,45 +31,41 @@ Ralph auto-detects how to post reviews:
    export PATH="$HOME/.local/bin:$PATH"  # add to ~/.zshrc or ~/.bashrc
    ```
 
-2. **Configure each project** — create a `ralph.toml` in your project root:
+2. **Configure each project** — run the interactive scaffold from your project root:
+   ```bash
+   ralph init
+   ```
+   This prompts for each value, auto-detects your repo slug and build/test commands, and writes `ralph.toml`. Or copy the template manually:
    ```bash
    cp ~/.ralph/project.example.toml ralph.toml
    ```
-   Edit `ralph.toml`:
-   ```toml
-   # Optional — Ralph infers this from `gh repo view` if omitted
-   repo = "your-org/your-repo"
-
-   # Optional — for fork-based workflows (see below)
-   upstream = ""
-
-   # Leave empty if there is no build step
-   build = "npm run build"
-
-   # Required
-   test = "npm test"
-   ```
-   Add `ralph.toml` to `.gitignore` to keep it local:
+   Either way, add `ralph.toml` to `.gitignore` to keep it local:
    ```bash
    echo 'ralph.toml' >> .gitignore
    ```
 
-3. **Run from your project root:**
+3. **Check your environment:**
    ```bash
-   ralph
+   ralph doctor
+   ```
+   Validates that `copilot` and `gh` are installed and authenticated, the repo is resolvable, and `ralph.toml` is configured. Fix anything flagged before starting a run.
+
+4. **Start the agent loop from your project root:**
+   ```bash
+   ralph run
    # work within a feature branch (scoped to issues labelled prd/foo-widget):
-   ralph --label=foo-widget
+   ralph run --label=foo-widget
    # target a single specific issue by number:
-   ralph --issue=42
+   ralph run --issue=42
    # combine: implement issue #42 on the foo-widget feature branch:
-   ralph --issue=42 --label=foo-widget
+   ralph run --issue=42 --label=foo-widget
    # cap the number of iterations (runs unlimited by default):
-   ralph --max-iterations=20 --label=foo-widget
+   ralph run --max-iterations=20 --label=foo-widget
    ```
    Ralph runs indefinitely by default, stopping only when all tasks are complete.
    Use `--max-iterations=N` as an escape hatch if you want a hard cap.
 
-4. **Update Ralph at any time:**
+5. **Update Ralph at any time:**
    ```bash
    git -C ~/.ralph pull
    ```
@@ -79,6 +75,24 @@ Ralph auto-detects how to post reviews:
 - [GitHub Copilot CLI](https://githubnext.com/projects/copilot-cli) (`copilot` in PATH)
 - `gh` (GitHub CLI), authenticated
 - `git`
+
+## Subcommands
+
+| Command | Description |
+|---|---|
+| `ralph` | Alias for `ralph status` — show a snapshot without starting work |
+| `ralph status [--label=<label>]` | Print open PRs (with review state and CI status) and open issues |
+| `ralph run [flags]` | Start the agent loop (see flags below) |
+| `ralph doctor` | Check environment health — tools, auth, config, network |
+| `ralph init` | Interactively scaffold a `ralph.toml` for the current project |
+
+### `ralph run` flags
+
+| Flag | Description |
+|---|---|
+| `--label=<label>` | Scope to a feature branch (`feat/<label>`) and label (`prd/<label>`) |
+| `--issue=<N>` | Implement only one specific issue, then exit |
+| `--max-iterations=N` | Hard cap on iterations; omit for unlimited |
 
 ## Files
 
