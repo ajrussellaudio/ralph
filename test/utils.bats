@@ -181,3 +181,17 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$stderr" == *"gh stderr output"* ]]
 }
+
+@test "stderr from gh is forwarded to caller on failure/exhaustion" {
+  # A stub that writes to stderr on every invocation and always fails.
+  cat > "$BATS_TEST_TMPDIR/mock-bin/gh" << 'STUB'
+#!/usr/bin/env bash
+echo "gh native error" >&2
+exit 1
+STUB
+  chmod +x "$BATS_TEST_TMPDIR/mock-bin/gh"
+
+  run --separate-stderr gh_with_retry pr list
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"gh native error"* ]]
+}
