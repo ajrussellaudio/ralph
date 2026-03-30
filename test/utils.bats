@@ -194,4 +194,5 @@ STUB
   run --separate-stderr gh_with_retry pr list
   [ "$status" -eq 1 ]
   [[ "$stderr" == *"gh native error"* ]]
+  [ "$(echo "$stderr" | grep -c 'gh native error')" -eq 3 ]
 }
