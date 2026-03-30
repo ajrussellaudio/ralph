@@ -151,22 +151,96 @@ _run_init() {
 }
 
 # ─── Overwrite protection ─────────────────────────────────────────────────────
+# Overwrite prompt now appears BEFORE the prompt sequence.
+# stdin order: overwrite → repo → upstream → build → test → write-confirm
 
 @test "init: existing ralph.toml → warns user, keeps file if declined" {
   echo "# existing" > "$BATS_TEST_TMPDIR/ralph.toml"
-  run ralph_init <<< "$(printf '%s\n' "" "" "" "" "Y" "n")"
+  run ralph_init <<< "$(printf '%s\n' "n" "" "" "" "" "Y")"
   [ "$status" -eq 0 ]
   grep -q "# existing" "$BATS_TEST_TMPDIR/ralph.toml"
   echo "$output" | grep -q "already exists"
 }
 
-@test "init: existing ralph.toml → overwrites when user confirms" {
+@test "init: existing ralph.toml → user types n → file unchanged, clean exit" {
   echo "# existing" > "$BATS_TEST_TMPDIR/ralph.toml"
-  run ralph_init <<< "$(printf '%s\n' "" "" "" "" "Y" "y")"
+  run ralph_init <<< "$(printf '%s\n' "n")"
+  [ "$status" -eq 0 ]
+  grep -q "# existing" "$BATS_TEST_TMPDIR/ralph.toml"
+  echo "$output" | grep -q "Aborted"
+}
+
+@test "init: existing ralph.toml → Enter (default No) → file unchanged, clean exit" {
+  echo "# existing" > "$BATS_TEST_TMPDIR/ralph.toml"
+  run ralph_init <<< "$(printf '%s\n' "")"
+  [ "$status" -eq 0 ]
+  grep -q "# existing" "$BATS_TEST_TMPDIR/ralph.toml"
+  echo "$output" | grep -q "Aborted"
+}
+
+@test "init: existing ralph.toml → user types y → full prompt sequence, file overwritten" {
+  echo "# existing" > "$BATS_TEST_TMPDIR/ralph.toml"
+  run ralph_init <<< "$(printf '%s\n' "y" "" "" "" "" "Y")"
   [ "$status" -eq 0 ]
   [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
   ! grep -q "# existing" "$BATS_TEST_TMPDIR/ralph.toml"
   grep -q 'repo = "' "$BATS_TEST_TMPDIR/ralph.toml"
+  echo "$output" | grep -q "Ralph"
+}
+
+@test "init: existing ralph.toml → overwrites when user confirms" {
+  echo "# existing" > "$BATS_TEST_TMPDIR/ralph.toml"
+  run ralph_init <<< "$(printf '%s\n' "y" "" "" "" "" "Y")"
+  [ "$status" -eq 0 ]
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  ! grep -q "# existing" "$BATS_TEST_TMPDIR/ralph.toml"
+  grep -q 'repo = "' "$BATS_TEST_TMPDIR/ralph.toml"
+}
+
+@test "init: existing ralph.toml with non-standard key → key preserved with comment on overwrite" {
+  printf 'repo = "old/repo"\nupstream = ""\nbuild = ""\ntest = ""\npermanent_issue = 1\n' \
+    > "$BATS_TEST_TMPDIR/ralph.toml"
+  run ralph_init <<< "$(printf '%s\n' "y" "" "" "" "" "Y")"
+  [ "$status" -eq 0 ]
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  grep -q '# (preserved from previous ralph.toml)' "$BATS_TEST_TMPDIR/ralph.toml"
+  grep -q 'permanent_issue' "$BATS_TEST_TMPDIR/ralph.toml"
+}
+
+@test "init: existing ralph.toml with multiple non-standard keys → all preserved" {
+  printf 'repo = "old/repo"\nupstream = ""\nbuild = ""\ntest = ""\nalpha = "a"\nbeta = "b"\n' \
+    > "$BATS_TEST_TMPDIR/ralph.toml"
+  run ralph_init <<< "$(printf '%s\n' "y" "" "" "" "" "Y")"
+  [ "$status" -eq 0 ]
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  grep -q 'alpha' "$BATS_TEST_TMPDIR/ralph.toml"
+  grep -q 'beta' "$BATS_TEST_TMPDIR/ralph.toml"
+  grep -c '# (preserved from previous ralph.toml)' "$BATS_TEST_TMPDIR/ralph.toml" | grep -q "2"
+}
+
+@test "init: existing ralph.toml with indented non-standard key → key preserved on overwrite" {
+  printf 'repo = "old/repo"\nupstream = ""\nbuild = ""\ntest = ""\n  indented_key = "indented_val"\n' \
+    > "$BATS_TEST_TMPDIR/ralph.toml"
+  run ralph_init <<< "$(printf '%s\n' "y" "" "" "" "" "Y")"
+  [ "$status" -eq 0 ]
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  grep -q 'indented_key' "$BATS_TEST_TMPDIR/ralph.toml"
+}
+
+@test "init: preserved keys appear after standard fields in written file" {
+  printf 'repo = "old/repo"\nupstream = ""\nbuild = ""\ntest = ""\ncustom_key = "custom_val"\n' \
+    > "$BATS_TEST_TMPDIR/ralph.toml"
+  run ralph_init <<< "$(printf '%s\n' "y" "" "" "" "" "Y")"
+  [ "$status" -eq 0 ]
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  # Standard fields must be present
+  grep -q 'repo = "' "$BATS_TEST_TMPDIR/ralph.toml"
+  grep -q 'test = "' "$BATS_TEST_TMPDIR/ralph.toml"
+  # Preserved key must appear after test field
+  local test_line custom_line
+  test_line=$(grep -n 'test = "' "$BATS_TEST_TMPDIR/ralph.toml" | head -1 | cut -d: -f1)
+  custom_line=$(grep -n 'custom_key' "$BATS_TEST_TMPDIR/ralph.toml" | head -1 | cut -d: -f1)
+  [ "$custom_line" -gt "$test_line" ]
 }
 
 # ─── ralph_doctor called after successful write ───────────────────────────────

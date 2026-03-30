@@ -83,6 +83,39 @@ _ralph_init_prompt() {
 }
 
 ralph_init() {
+  # ── Determine output path early (needed for overwrite check) ─────────────────
+
+  local output_path="${INIT_OUTPUT_DIR:-$GIT_ROOT}/ralph.toml"
+
+  # ── Overwrite prompt — runs before the prompt sequence ───────────────────────
+
+  local -a _preserved_lines=()
+
+  if [[ -f "$output_path" ]]; then
+    printf "ralph.toml already exists. Overwrite? [y/N] "
+    local overwrite_input
+    read -r overwrite_input
+    if [[ ! "$overwrite_input" =~ ^[Yy]$ ]]; then
+      echo ""
+      echo "  Aborted. No changes made."
+      return 0
+    fi
+
+    # Collect non-standard key=value lines from the existing file.
+    while IFS= read -r _raw_line; do
+      [[ "$_raw_line" =~ ^[[:space:]]*# ]] && continue
+      [[ -z "${_raw_line// }" ]] && continue
+      if [[ "$_raw_line" =~ ^[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*= ]]; then
+        local _pkey="${BASH_REMATCH[1]}"
+        if ! [[ "$_pkey" =~ ^(repo|upstream|build|test)$ ]]; then
+          _preserved_lines+=("$_raw_line")
+        fi
+      fi
+    done < "$output_path"
+  fi
+
+  # ── Header ───────────────────────────────────────────────────────────────────
+
   local rule="━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo "$rule"
   echo "🚀 Ralph — init"
@@ -194,21 +227,13 @@ TOML
 
   # ── Write file ───────────────────────────────────────────────────────────────
 
-  local output_path="${INIT_OUTPUT_DIR:-$GIT_ROOT}/ralph.toml"
-
-  if [[ -f "$output_path" ]]; then
-    echo ""
-    printf "  ⚠️  %s already exists. Overwrite? [y/N] " "$output_path"
-    local overwrite_value
-    read -r overwrite_value
-    if [[ ! "$overwrite_value" =~ ^[Yy]$ ]]; then
-      echo ""
-      echo "  Aborted. Existing file kept."
-      return 0
-    fi
-  fi
-
-  printf '%s\n' "$file_contents" > "$output_path"
+  {
+    printf '%s\n' "$file_contents"
+    local _i
+    for (( _i=0; _i<${#_preserved_lines[@]}; _i++ )); do
+      printf '\n# (preserved from previous ralph.toml)\n%s\n' "${_preserved_lines[$_i]}"
+    done
+  } > "$output_path"
 
   echo ""
   echo "  ✅  Written: $output_path"
