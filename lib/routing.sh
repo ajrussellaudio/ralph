@@ -6,6 +6,8 @@
 #
 # MODE is one of: implement | review | fix | escalate | merge | complete
 
+source "$(dirname "${BASH_SOURCE[0]}")/utils.sh"
+
 # Queries the GitHub API for apps installed on the repo and sets REVIEW_BACKEND
 # to 'copilot' if copilot-pull-request-reviewer is present, otherwise 'comments'.
 # Defaults to 'comments' if the API call fails for any reason.
@@ -13,7 +15,7 @@ detect_review_backend() {
   echo "  🔍 Detecting review backend…"
 
   local found
-  found=$(gh api "/repos/${REPO}/apps" \
+  found=$(gh_with_retry api "/repos/${REPO}/apps" \
     --jq '[.[].slug] | any(. == "copilot-pull-request-reviewer")' 2>/dev/null || echo "false")
 
   if [[ "$found" == "true" ]]; then
@@ -39,7 +41,7 @@ determine_mode() {
   fi
 
   echo "  🔍 Checking for open ralph PRs in ${REPO}…"
-  OPEN_RALPH_PRS=$(gh pr list --repo "$REPO" --state open \
+  OPEN_RALPH_PRS=$(gh_with_retry pr list --repo "$REPO" --state open \
     --base "$FEATURE_BRANCH" \
     --json number,headRefName \
     --jq '[.[] | select(.headRefName | startswith("ralph/issue-"))] | sort_by(.number)' \
@@ -52,7 +54,7 @@ determine_mode() {
 
     if [[ "$REVIEW_BACKEND" == "copilot" ]]; then
       # Copilot bot review path: query review state instead of HTML comment sentinels.
-      COPILOT_FIX_COMMENTS=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+      COPILOT_FIX_COMMENTS=$(gh_with_retry pr view "$PR_NUMBER" --repo "$REPO" \
         --json comments \
         --jq '[.comments[] | select(.body | contains("<!-- RALPH-FIX-BOT: RESPONSE -->"))]' \
         < /dev/null 2>/dev/null || echo "[]")
@@ -60,7 +62,7 @@ determine_mode() {
       FIX_COUNT=$(echo "$COPILOT_FIX_COMMENTS" | jq 'length')
       LAST_FIX_TIME=$(echo "$COPILOT_FIX_COMMENTS" | jq -r 'last | .createdAt // ""')
 
-      COPILOT_REVIEW_JSON=$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}/reviews" \
+      COPILOT_REVIEW_JSON=$(gh_with_retry api "/repos/${REPO}/pulls/${PR_NUMBER}/reviews" \
         --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | last | {state: (.state // ""), submitted_at: (.submitted_at // "")}' \
         < /dev/null 2>/dev/null || echo '{"state":"","submitted_at":""}')
 
@@ -90,7 +92,7 @@ determine_mode() {
       fi
     else
       # HTML comment sentinel path.
-      COMMENTS_JSON=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+      COMMENTS_JSON=$(gh_with_retry pr view "$PR_NUMBER" --repo "$REPO" \
         --json comments \
         < /dev/null 2>/dev/null || echo '{"comments":[]}')
 
@@ -108,7 +110,7 @@ determine_mode() {
         # If commits were pushed after the last REQUEST_CHANGES comment → review
         # Otherwise → fix mode (no new commits yet)
         LAST_RC_TIME=$(echo "$COMMENTS_JSON" | jq -r '[.comments[] | select(.body != null and (.body | contains("RALPH-REVIEW: REQUEST_CHANGES")))] | last | .createdAt // ""' || echo "")
-        LATEST_COMMIT_TIME=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+        LATEST_COMMIT_TIME=$(gh_with_retry pr view "$PR_NUMBER" --repo "$REPO" \
           --json commits \
           --jq '.commits | last | .committedDate // ""' \
           < /dev/null 2>/dev/null || echo "")
@@ -129,7 +131,7 @@ determine_mode() {
 
     if [[ -n "${PINNED_ISSUE:-}" ]]; then
       # Single-issue mode: check if the pinned issue is still open.
-      PINNED_STATE=$(gh issue view "$PINNED_ISSUE" --repo "$REPO" --json state \
+      PINNED_STATE=$(gh_with_retry issue view "$PINNED_ISSUE" --repo "$REPO" --json state \
         --jq '.state' < /dev/null 2>/dev/null || echo "")
       if [[ -z "$PINNED_STATE" ]]; then
         echo "  ⚠  Could not determine state of pinned issue #${PINNED_ISSUE} — skipping"
@@ -146,7 +148,7 @@ determine_mode() {
     # PRD mode: --label scopes to prd/<label>; exclude the PRD issue itself (prd) and blocked.
     # Standalone mode: no label filter; additionally exclude any issue carrying a prd/* label.
     elif [[ -n "$FEATURE_LABEL" ]]; then
-      ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
+      ISSUE_NUMBER=$(gh_with_retry issue list --repo "$REPO" --state open \
         --label "$FEATURE_LABEL" \
         --json number,labels --limit 100 \
         --jq '
@@ -159,7 +161,7 @@ determine_mode() {
         ' \
         < /dev/null 2>/dev/null || echo "")
     else
-      ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state open \
+      ISSUE_NUMBER=$(gh_with_retry issue list --repo "$REPO" --state open \
         --json number,labels --limit 100 \
         --jq '
           [.[] | select(.labels | map(.name) | (any(. == "prd") or any(startswith("prd/")) or any(. == "blocked")) | not)]
@@ -181,7 +183,7 @@ determine_mode() {
       elif [[ -n "$FEATURE_LABEL" && "$FEATURE_BRANCH" != "main" ]]; then
         # PRD mode with no remaining task issues — check for an existing feat→main PR.
         # A draft PR is treated the same as no PR: route to feature-pr to promote it.
-        FEATURE_PR_JSON=$(gh pr list --repo "$REPO" --state open \
+        FEATURE_PR_JSON=$(gh_with_retry pr list --repo "$REPO" --state open \
           --base "main" \
           --head "$FEATURE_BRANCH" \
           --json number,isDraft --jq '.[0] // empty' \
