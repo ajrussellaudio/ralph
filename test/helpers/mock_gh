@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Mock gh stub for gh_with_retry tests.
+#
+# Reads:
+#   MOCK_GH_FAIL_TIMES  — how many times to fail before succeeding (0 = always succeed)
+#   MOCK_GH_STDOUT      — what to print on success
+#   MOCK_GH_EXIT        — exit code to use when failing (default 1)
+#   MOCK_GH_COUNTER_FILE — path to a file used to track invocation count
+#
+# On each call, increments the counter, then either exits with MOCK_GH_EXIT
+# (if invocation count <= MOCK_GH_FAIL_TIMES) or prints MOCK_GH_STDOUT and exits 0.
+
+set -euo pipefail
+
+MOCK_GH_FAIL_TIMES="${MOCK_GH_FAIL_TIMES:-0}"
+MOCK_GH_STDOUT="${MOCK_GH_STDOUT:-}"
+MOCK_GH_EXIT="${MOCK_GH_EXIT:-1}"
+MOCK_GH_COUNTER_FILE="${MOCK_GH_COUNTER_FILE:-/tmp/mock_gh_counter}"
+
+# Increment counter
+if [[ -f "$MOCK_GH_COUNTER_FILE" ]]; then
+  count=$(cat "$MOCK_GH_COUNTER_FILE")
+  count=$((count + 1))
+else
+  count=1
+fi
+printf '%s' "$count" > "$MOCK_GH_COUNTER_FILE"
+
+if (( count <= MOCK_GH_FAIL_TIMES )); then
+  exit "$MOCK_GH_EXIT"
+else
+  [[ -n "$MOCK_GH_STDOUT" ]] && printf '%s\n' "$MOCK_GH_STDOUT"
+  exit 0
+fi
