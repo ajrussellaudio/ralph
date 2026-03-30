@@ -72,7 +72,12 @@ _ralph_init_prompt() {
     if [[ "$input" =~ ^[0-9]+$ ]] && (( input >= 1 && input <= count )); then
       _RALPH_READ_VALUE="${suggestions[$((input-1))]}"
     else
-      _RALPH_READ_VALUE="${input:-${suggestions[0]}}"
+      if [[ "$input" =~ ^[0-9]+$ ]]; then
+        # Out-of-range number — fall back to first suggestion
+        _RALPH_READ_VALUE="${suggestions[0]}"
+      else
+        _RALPH_READ_VALUE="${input:-${suggestions[0]}}"
+      fi
     fi
   fi
 }

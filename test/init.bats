@@ -325,3 +325,32 @@ _run_init() {
   _run_init "" "" "" "" "n"
   echo "$output" | grep -q "custom"
 }
+
+# ─── Multiple-choice edge cases: out-of-range numeric input ──────────────────
+
+@test "init: multiple project files → out-of-range number (999) falls back to first suggestion" {
+  echo '{}' > "$BATS_TEST_TMPDIR/package.json"
+  echo 'module example.com/m' > "$BATS_TEST_TMPDIR/go.mod"
+  _run_init "" "" "999" "999" "Y"
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  grep -q 'build = "npm run build"' "$BATS_TEST_TMPDIR/ralph.toml"
+  grep -q 'test = "npm test"' "$BATS_TEST_TMPDIR/ralph.toml"
+}
+
+@test "init: multiple project files → boundary value '0' falls back to first suggestion" {
+  echo '{}' > "$BATS_TEST_TMPDIR/package.json"
+  echo 'module example.com/m' > "$BATS_TEST_TMPDIR/go.mod"
+  _run_init "" "" "0" "0" "Y"
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  grep -q 'build = "npm run build"' "$BATS_TEST_TMPDIR/ralph.toml"
+  grep -q 'test = "npm test"' "$BATS_TEST_TMPDIR/ralph.toml"
+}
+
+@test "init: multiple project files → empty input defaults to first suggestion" {
+  echo '{}' > "$BATS_TEST_TMPDIR/package.json"
+  echo 'module example.com/m' > "$BATS_TEST_TMPDIR/go.mod"
+  _run_init "" "" "" "" "Y"
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  grep -q 'build = "npm run build"' "$BATS_TEST_TMPDIR/ralph.toml"
+  grep -q 'test = "npm test"' "$BATS_TEST_TMPDIR/ralph.toml"
+}
