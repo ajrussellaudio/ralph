@@ -19,6 +19,8 @@ setup() {
   export SCRIPT_DIR="$REPO_ROOT"
   export GIT_ROOT="$BATS_TEST_TMPDIR"
   export INIT_OUTPUT_DIR="$BATS_TEST_TMPDIR"
+  # Isolate project-file detection from the real working directory.
+  export INIT_SCAN_DIR="$BATS_TEST_TMPDIR"
 
   # Default mock: gh repo view returns owner/repo.
   unset MOCK_REPO_VIEW_RESPONSE MOCK_REPO_VIEW_EXIT || true
@@ -182,4 +184,144 @@ _run_init() {
   run "$REPO_ROOT/ralph.sh" init <<< "$(printf '%s\n' "" "" "" "" "n")"
   [ "$status" -eq 0 ]
   echo "$output" | grep -q "Ralph"
+}
+
+# ─── Project-type detection: no match ────────────────────────────────────────
+
+@test "init: no project file → blank build/test defaults (no regression)" {
+  # INIT_SCAN_DIR is empty temp dir — no project files.
+  _run_init "" "" "" "" "Y"
+  [ "$status" -eq 0 ]
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  grep -q 'build = ""' "$BATS_TEST_TMPDIR/ralph.toml"
+  grep -q 'test = ""' "$BATS_TEST_TMPDIR/ralph.toml"
+}
+
+# ─── Project-type detection: package.json ────────────────────────────────────
+
+@test "init: package.json present → npm test offered as test default" {
+  echo '{}' > "$BATS_TEST_TMPDIR/package.json"
+  _run_init "" "" "" "" "n"
+  echo "$output" | grep -q "npm test"
+}
+
+@test "init: package.json present → npm run build offered as build default" {
+  echo '{}' > "$BATS_TEST_TMPDIR/package.json"
+  _run_init "" "" "" "" "n"
+  echo "$output" | grep -q "npm run build"
+}
+
+@test "init: package.json present, enter accepted → file written with npm commands" {
+  echo '{}' > "$BATS_TEST_TMPDIR/package.json"
+  _run_init "" "" "" "" "Y"
+  [ "$status" -eq 0 ]
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  grep -q 'build = "npm run build"' "$BATS_TEST_TMPDIR/ralph.toml"
+  grep -q 'test = "npm test"' "$BATS_TEST_TMPDIR/ralph.toml"
+}
+
+# ─── Project-type detection: go.mod ──────────────────────────────────────────
+
+@test "init: go.mod present → go test ./... offered as test default" {
+  echo 'module example.com/mymod' > "$BATS_TEST_TMPDIR/go.mod"
+  _run_init "" "" "" "" "n"
+  echo "$output" | grep -q "go test ./\.\.\."
+}
+
+@test "init: go.mod present, enter accepted → file written with go commands" {
+  echo 'module example.com/mymod' > "$BATS_TEST_TMPDIR/go.mod"
+  _run_init "" "" "" "" "Y"
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  grep -q 'build = "go build ./..."' "$BATS_TEST_TMPDIR/ralph.toml"
+  grep -q 'test = "go test ./..."' "$BATS_TEST_TMPDIR/ralph.toml"
+}
+
+# ─── Project-type detection: Makefile ────────────────────────────────────────
+
+@test "init: Makefile with test: target → make test offered" {
+  printf 'test:\n\techo run tests\n' > "$BATS_TEST_TMPDIR/Makefile"
+  _run_init "" "" "" "" "n"
+  echo "$output" | grep -q "make test"
+}
+
+@test "init: Makefile without test: target → make test NOT offered (blank default)" {
+  printf 'lint:\n\techo lint\n' > "$BATS_TEST_TMPDIR/Makefile"
+  _run_init "" "" "" "" "Y"
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  grep -q 'test = ""' "$BATS_TEST_TMPDIR/ralph.toml"
+}
+
+@test "init: Makefile with build: target → make build offered" {
+  printf 'build:\n\techo build\n' > "$BATS_TEST_TMPDIR/Makefile"
+  _run_init "" "" "" "" "n"
+  echo "$output" | grep -q "make build"
+}
+
+@test "init: Makefile without build: target → make build NOT offered (blank default)" {
+  printf 'lint:\n\techo lint\n' > "$BATS_TEST_TMPDIR/Makefile"
+  _run_init "" "" "" "" "Y"
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  grep -q 'build = ""' "$BATS_TEST_TMPDIR/ralph.toml"
+}
+
+# ─── Project-type detection: Cargo.toml ──────────────────────────────────────
+
+@test "init: Cargo.toml present → cargo test offered as test default" {
+  echo '[package]' > "$BATS_TEST_TMPDIR/Cargo.toml"
+  _run_init "" "" "" "" "n"
+  echo "$output" | grep -q "cargo test"
+}
+
+@test "init: Cargo.toml present, enter accepted → file written with cargo commands" {
+  echo '[package]' > "$BATS_TEST_TMPDIR/Cargo.toml"
+  _run_init "" "" "" "" "Y"
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  grep -q 'build = "cargo build"' "$BATS_TEST_TMPDIR/ralph.toml"
+  grep -q 'test = "cargo test"' "$BATS_TEST_TMPDIR/ralph.toml"
+}
+
+# ─── Multiple matches: numbered list presented ────────────────────────────────
+
+@test "init: multiple project files → numbered options shown for test" {
+  echo '{}' > "$BATS_TEST_TMPDIR/package.json"
+  echo 'module example.com/m' > "$BATS_TEST_TMPDIR/go.mod"
+  _run_init "" "" "" "" "n"
+  echo "$output" | grep -q "1)"
+  echo "$output" | grep -q "2)"
+}
+
+@test "init: multiple project files → user picks number → correct command written" {
+  echo '{}' > "$BATS_TEST_TMPDIR/package.json"
+  echo 'module example.com/m' > "$BATS_TEST_TMPDIR/go.mod"
+  # build: pick option 1 (npm run build), test: pick option 1 (npm test)
+  _run_init "" "" "1" "1" "Y"
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  grep -q 'build = "npm run build"' "$BATS_TEST_TMPDIR/ralph.toml"
+  grep -q 'test = "npm test"' "$BATS_TEST_TMPDIR/ralph.toml"
+}
+
+@test "init: multiple project files → user picks second option" {
+  echo '{}' > "$BATS_TEST_TMPDIR/package.json"
+  echo 'module example.com/m' > "$BATS_TEST_TMPDIR/go.mod"
+  # build: pick option 2 (go build ./...), test: pick option 2 (go test ./...)
+  _run_init "" "" "2" "2" "Y"
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  grep -q 'build = "go build ./..."' "$BATS_TEST_TMPDIR/ralph.toml"
+  grep -q 'test = "go test ./..."' "$BATS_TEST_TMPDIR/ralph.toml"
+}
+
+@test "init: multiple project files → user types custom value instead of picking number" {
+  echo '{}' > "$BATS_TEST_TMPDIR/package.json"
+  echo 'module example.com/m' > "$BATS_TEST_TMPDIR/go.mod"
+  _run_init "" "" "pnpm build" "vitest run" "Y"
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  grep -q 'build = "pnpm build"' "$BATS_TEST_TMPDIR/ralph.toml"
+  grep -q 'test = "vitest run"' "$BATS_TEST_TMPDIR/ralph.toml"
+}
+
+@test "init: multiple project files → 'Or type a custom value' shown in output" {
+  echo '{}' > "$BATS_TEST_TMPDIR/package.json"
+  echo 'module example.com/m' > "$BATS_TEST_TMPDIR/go.mod"
+  _run_init "" "" "" "" "n"
+  echo "$output" | grep -q "custom"
 }

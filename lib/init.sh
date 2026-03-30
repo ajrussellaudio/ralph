@@ -5,6 +5,78 @@
 #
 # Expects SCRIPT_DIR to be set by the caller (ralph.sh or tests).
 
+# Detect project-type command suggestions for a given field ("build" or "test").
+# Scans INIT_SCAN_DIR if set, otherwise PWD. Prints one suggestion per line.
+_ralph_init_detect() {
+  local field="$1"
+  local scan_dir="${INIT_SCAN_DIR:-$PWD}"
+
+  if [[ -f "$scan_dir/package.json" ]]; then
+    [[ "$field" == "test" ]]  && echo "npm test"
+    [[ "$field" == "build" ]] && echo "npm run build"
+  fi
+
+  if [[ -f "$scan_dir/go.mod" ]]; then
+    [[ "$field" == "test" ]]  && echo "go test ./..."
+    [[ "$field" == "build" ]] && echo "go build ./..."
+  fi
+
+  if [[ -f "$scan_dir/Makefile" ]]; then
+    if [[ "$field" == "test" ]] && grep -q "^test:" "$scan_dir/Makefile"; then
+      echo "make test"
+    fi
+    if [[ "$field" == "build" ]] && grep -q "^build:" "$scan_dir/Makefile"; then
+      echo "make build"
+    fi
+  fi
+
+  if [[ -f "$scan_dir/Cargo.toml" ]]; then
+    [[ "$field" == "test" ]]  && echo "cargo test"
+    [[ "$field" == "build" ]] && echo "cargo build"
+  fi
+}
+
+# Prompt the user for a command field with optional detected suggestions.
+# Suggestions are passed as positional args after label and desc.
+# Sets global _RALPH_READ_VALUE to the resolved input.
+_RALPH_READ_VALUE=""
+_ralph_init_prompt() {
+  local label="$1"
+  local desc="$2"
+  shift 2
+  local suggestions=("$@")
+  local count="${#suggestions[@]}"
+  local input=""
+
+  echo ""
+
+  if [[ $count -eq 0 ]]; then
+    echo "  $label  $desc []"
+    printf "  > "
+    read -r input
+    _RALPH_READ_VALUE="$input"
+  elif [[ $count -eq 1 ]]; then
+    echo "  $label  $desc [${suggestions[0]}]"
+    printf "  > "
+    read -r input
+    _RALPH_READ_VALUE="${input:-${suggestions[0]}}"
+  else
+    echo "  $label  $desc"
+    local i
+    for (( i=0; i<count; i++ )); do
+      echo "    $((i+1))) ${suggestions[$i]}"
+    done
+    echo "    Or type a custom value. []"
+    printf "  > "
+    read -r input
+    if [[ "$input" =~ ^[0-9]+$ ]] && (( input >= 1 && input <= count )); then
+      _RALPH_READ_VALUE="${suggestions[$((input-1))]}"
+    else
+      _RALPH_READ_VALUE="${input:-${suggestions[0]}}"
+    fi
+  fi
+}
+
 ralph_init() {
   local rule="━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo "$rule"
@@ -46,19 +118,21 @@ ralph_init() {
 
   # ── Field 3: build ───────────────────────────────────────────────────────────
 
-  echo ""
-  echo "  build  Build command — leave empty if no build step. []"
-  printf "  > "
-  local build_value
-  read -r build_value
+  local -a _build_sugs=()
+  while IFS= read -r _line; do [[ -n "$_line" ]] && _build_sugs+=("$_line"); done \
+    < <(_ralph_init_detect "build")
+  _ralph_init_prompt "build" "Build command — leave empty if no build step." \
+    "${_build_sugs[@]+"${_build_sugs[@]}"}"
+  local build_value="$_RALPH_READ_VALUE"
 
   # ── Field 4: test ────────────────────────────────────────────────────────────
 
-  echo ""
-  echo "  test  Test command — required for Ralph to validate changes. []"
-  printf "  > "
-  local test_value
-  read -r test_value
+  local -a _test_sugs=()
+  while IFS= read -r _line; do [[ -n "$_line" ]] && _test_sugs+=("$_line"); done \
+    < <(_ralph_init_detect "test")
+  _ralph_init_prompt "test" "Test command — required for Ralph to validate changes." \
+    "${_test_sugs[@]+"${_test_sugs[@]}"}"
+  local test_value="$_RALPH_READ_VALUE"
 
   # ── Sanitize values for TOML string interpolation (escape \ then ") ─────────
 
