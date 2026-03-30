@@ -55,9 +55,12 @@ BUILD_CMD=$(toml_get build)
 TEST_CMD=$(toml_get test)
 REPO=$(toml_get repo)
 
+# shellcheck source=lib/utils.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/utils.sh"
+
 # Fall back to inferring the repo from the GitHub CLI.
 if [[ -z "$REPO" ]]; then
-  REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || echo "")
+  REPO=$(gh_with_retry repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || echo "")
 fi
 
 UPSTREAM_REPO=$(toml_get upstream)
@@ -230,7 +233,7 @@ fi
 # the feature branch already exists on origin. If neither is true, the label is almost
 # certainly a typo.
 if [[ -n "$FEATURE_LABEL" && -z "$PINNED_ISSUE" ]]; then
-  if PRD_ISSUE_COUNT=$(gh issue list --repo "$REPO" --state open \
+  if PRD_ISSUE_COUNT=$(gh_with_retry issue list --repo "$REPO" --state open \
       --label "$FEATURE_LABEL" \
       --json number --jq 'length' \
       < /dev/null 2>/dev/null); then
@@ -248,7 +251,7 @@ fi
 
 # If a specific issue is pinned, verify it exists and is not already closed.
 if [[ -n "$PINNED_ISSUE" ]]; then
-  PINNED_ISSUE_STATE=$(gh issue view "$PINNED_ISSUE" --repo "$REPO" --json state \
+  PINNED_ISSUE_STATE=$(gh_with_retry issue view "$PINNED_ISSUE" --repo "$REPO" --json state \
     --jq '.state' < /dev/null 2>/dev/null || echo "")
   if [[ -z "$PINNED_ISSUE_STATE" ]]; then
     echo "Error: Issue #${PINNED_ISSUE} not found in ${REPO}. Check the issue number."
@@ -307,7 +310,7 @@ if [[ "$FEATURE_BRANCH" != "main" ]]; then
     DRAFT_PR_BODY="🤖 Ralph is working on this feature. This PR will be updated when all tasks are complete."
     DRAFT_PR_BODY_FILE=$(mktemp)
     echo "$DRAFT_PR_BODY" > "$DRAFT_PR_BODY_FILE"
-    gh pr create \
+    gh_with_retry pr create \
       --repo "$UPSTREAM_REPO" \
       --base main \
       --head "${FORK_OWNER}:${FEATURE_BRANCH}" \
@@ -337,7 +340,7 @@ build_prompt() {
   # Pre-resolve the PR branch name so mode files don't need to look it up.
   local pr_branch=""
   if [[ -n "$PR_NUMBER" ]]; then
-    pr_branch=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+    pr_branch=$(gh_with_retry pr view "$PR_NUMBER" --repo "$REPO" \
       --json headRefName --jq '.headRefName' < /dev/null 2>/dev/null || echo "")
   fi
 
@@ -363,12 +366,12 @@ post_merge_cleanup() {
   local pr_number="$1"
 
   local pr_state
-  pr_state=$(gh pr view "$pr_number" --repo "$REPO" \
+  pr_state=$(gh_with_retry pr view "$pr_number" --repo "$REPO" \
     --json state --jq '.state' < /dev/null 2>/dev/null || echo "")
   [[ "$pr_state" == "MERGED" ]] || return 0
 
   local closed_issues
-  closed_issues=$(gh pr view "$pr_number" --repo "$REPO" \
+  closed_issues=$(gh_with_retry pr view "$pr_number" --repo "$REPO" \
     --json closingIssuesReferences \
     --jq '.closingIssuesReferences[].number' \
     < /dev/null 2>/dev/null || echo "")
@@ -378,7 +381,7 @@ post_merge_cleanup() {
   # parsing the issue number directly from the branch name (ralph/issue-<N>).
   if [[ -z "$closed_issues" ]]; then
     local head_ref
-    head_ref=$(gh pr view "$pr_number" --repo "$REPO" \
+    head_ref=$(gh_with_retry pr view "$pr_number" --repo "$REPO" \
       --json headRefName --jq '.headRefName' \
       < /dev/null 2>/dev/null || echo "")
     if [[ "$head_ref" =~ ^ralph/issue-([0-9]+)$ ]]; then
@@ -387,14 +390,14 @@ post_merge_cleanup() {
   fi
 
   for issue_num in $closed_issues; do
-    gh issue close "$issue_num" --repo "$REPO" < /dev/null 2>/dev/null || true
+    gh_with_retry issue close "$issue_num" --repo "$REPO" < /dev/null 2>/dev/null || true
     echo "  ✅  Closed issue #${issue_num}"
   done
 
   [[ -n "$closed_issues" ]] || return 0
 
   local blocked_json
-  blocked_json=$(gh issue list --repo "$REPO" --label blocked \
+  blocked_json=$(gh_with_retry issue list --repo "$REPO" --label blocked \
     --json number,body --limit 100 \
     < /dev/null 2>/dev/null || echo "[]")
 
