@@ -105,7 +105,7 @@ ralph_init() {
     while IFS= read -r _raw_line; do
       [[ "$_raw_line" =~ ^[[:space:]]*# ]] && continue
       [[ -z "${_raw_line// }" ]] && continue
-      if [[ "$_raw_line" =~ ^([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*= ]]; then
+      if [[ "$_raw_line" =~ ^[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*= ]]; then
         local _pkey="${BASH_REMATCH[1]}"
         if ! [[ "$_pkey" =~ ^(repo|upstream|build|test)$ ]]; then
           _preserved_lines+=("$_raw_line")

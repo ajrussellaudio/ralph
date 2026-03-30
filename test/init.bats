@@ -218,6 +218,15 @@ _run_init() {
   grep -c '# (preserved from previous ralph.toml)' "$BATS_TEST_TMPDIR/ralph.toml" | grep -q "2"
 }
 
+@test "init: existing ralph.toml with indented non-standard key → key preserved on overwrite" {
+  printf 'repo = "old/repo"\nupstream = ""\nbuild = ""\ntest = ""\n  indented_key = "indented_val"\n' \
+    > "$BATS_TEST_TMPDIR/ralph.toml"
+  run ralph_init <<< "$(printf '%s\n' "y" "" "" "" "" "Y")"
+  [ "$status" -eq 0 ]
+  [ -f "$BATS_TEST_TMPDIR/ralph.toml" ]
+  grep -q 'indented_key' "$BATS_TEST_TMPDIR/ralph.toml"
+}
+
 @test "init: preserved keys appear after standard fields in written file" {
   printf 'repo = "old/repo"\nupstream = ""\nbuild = ""\ntest = ""\ncustom_key = "custom_val"\n' \
     > "$BATS_TEST_TMPDIR/ralph.toml"
