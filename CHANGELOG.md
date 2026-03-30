@@ -15,6 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `test/init.bats`: bats tests covering all-defaults accepted, user overrides, blank upstream, declined preview, file comments, repo inference, and doctor call (#122)
 - Project-type detection in `ralph init`: scans CWD for `package.json`, `go.mod`, `Makefile`, `Cargo.toml` and suggests appropriate `build`/`test` defaults; verifies Makefile targets exist before suggesting them; presents numbered choices when multiple files are detected; user may pick by number or type a custom value (#123)
 - `test/init.bats` extended to cover all detection cases: each project file type, Makefile with/without targets, multiple-match numbered list, custom freeform entry, no-match blank default (#123)
+- `ralph init` pre-prompt overwrite check: when `ralph.toml` already exists, asks `ralph.toml already exists. Overwrite? [y/N]` before showing any prompts; default is No; declining exits cleanly without modifying the file (#124)
+- Non-standard key preservation in `ralph init`: when overwriting an existing `ralph.toml`, any keys not in the standard set (`repo`, `upstream`, `build`, `test`) are carried over to the new file after the standard fields, each preceded by a `# (preserved from previous ralph.toml)` comment (#124)
+- `test/init.bats` extended to cover all overwrite and preservation cases: decline with `n`, decline with Enter (default No), accept with `y`, single non-standard key preserved, multiple non-standard keys preserved, preserved keys appear after standard fields (#124)
 
 ### Changed
 - `ralph run` preflight now calls `ralph_doctor()` instead of the old ad-hoc checks; aborts with exit 1 if any hard failure is found (#118)
