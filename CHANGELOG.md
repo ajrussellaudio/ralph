@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `lib/init.sh` with `ralph_init()`: guided prompt sequence to scaffold `ralph.toml`; infers `repo` from `gh repo view`; prompts for all four fields with descriptions and defaults; shows file preview in a `━━━` box with `Write this file? [Y/n]` confirmation; writes file with inline comments matching `project.example.toml` style; calls `ralph_doctor()` after a successful write (#122)
 - `ralph init` subcommand dispatched from `ralph.sh` (#122)
 - `test/init.bats`: bats tests covering all-defaults accepted, user overrides, blank upstream, declined preview, file comments, repo inference, and doctor call (#122)
+- Project-type detection in `ralph init`: scans CWD for `package.json`, `go.mod`, `Makefile`, `Cargo.toml` and suggests appropriate `build`/`test` defaults; verifies Makefile targets exist before suggesting them; presents numbered choices when multiple files are detected; user may pick by number or type a custom value (#123)
+- `test/init.bats` extended to cover all detection cases: each project file type, Makefile with/without targets, multiple-match numbered list, custom freeform entry, no-match blank default (#123)
 
 ### Changed
 - `ralph run` preflight now calls `ralph_doctor()` instead of the old ad-hoc checks; aborts with exit 1 if any hard failure is found (#118)
