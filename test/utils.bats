@@ -165,3 +165,19 @@ EOF
   # stdin should have been empty (EOF from /dev/null).
   [ ! -s "$STDIN_LOG_FILE" ]
 }
+
+# ─── stderr forwarding ────────────────────────────────────────────────────────
+
+@test "stderr from gh is forwarded to caller on success" {
+  # A stub that writes to its own stderr and exits 0.
+  cat > "$BATS_TEST_TMPDIR/mock-bin/gh" << 'EOF'
+#!/usr/bin/env bash
+echo "gh stderr output" >&2
+exit 0
+EOF
+  chmod +x "$BATS_TEST_TMPDIR/mock-bin/gh"
+
+  run --separate-stderr gh_with_retry pr list
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"gh stderr output"* ]]
+}
