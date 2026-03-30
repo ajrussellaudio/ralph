@@ -55,7 +55,7 @@ TEST_CMD=$(toml_get test)
 REPO=$(toml_get repo)
 
 # shellcheck source=lib/utils.sh
-source "$(dirname "${BASH_SOURCE[0]}")/lib/utils.sh"
+source "$SCRIPT_DIR/lib/utils.sh"
 
 # Fall back to inferring the repo from the GitHub CLI.
 if [[ -z "$REPO" ]]; then
