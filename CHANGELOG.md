@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - `lib/utils.sh` with `gh_with_retry()`: wraps `gh` with up to 3 attempts; sleeps 1 s before attempt 2 and 2 s before attempt 3; prints a ⚠️ warning to stderr on each failed attempt and a ❌ error after exhaustion; forwards all args, stdin, and exit codes transparently (#131)
-- `test/utils.bats`: bats tests covering all retry paths — first-attempt success, single retry, full exhaustion, arg forwarding, and stdin forwarding (#131) audits 9 environment checks (copilot in PATH, gh in PATH, gh authenticated, repo resolvable, modes directory present, ralph.toml present, test/build commands configured, GitHub API reachable); prints ✅/⚠️/❌ per check with fix hints; exits 0 if no hard failures, 1 if any occur (#117)
+- `test/utils.bats`: bats tests covering all retry paths — first-attempt success, single retry, full exhaustion, arg forwarding, and stdin forwarding (#131)
 - `ralph doctor` subcommand dispatched from `ralph.sh` (#117)
 - `test/doctor.bats`: bats tests covering all-pass, each hard failure in isolation, each warning in isolation, multiple simultaneous failures, mix of warnings and failures, and exit code behaviour (#117)
 - `lib/init.sh` with `ralph_init()`: guided prompt sequence to scaffold `ralph.toml`; infers `repo` from `gh repo view`; prompts for all four fields with descriptions and defaults; shows file preview in a `━━━` box with `Write this file? [Y/n]` confirmation; writes file with inline comments matching `project.example.toml` style; calls `ralph_doctor()` after a successful write (#122)
