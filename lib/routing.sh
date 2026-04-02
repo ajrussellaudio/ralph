@@ -183,9 +183,9 @@ determine_mode() {
       elif [[ -n "$FEATURE_LABEL" && "$FEATURE_BRANCH" != "main" ]]; then
         # PRD mode with no remaining task issues — check for an existing feat→main PR.
         # A draft PR is treated the same as no PR: route to feature-pr to promote it.
-        FEATURE_PR_JSON=$(gh_with_retry pr list --repo "$REPO" --state open \
+        FEATURE_PR_JSON=$(gh_with_retry pr list --repo "$UPSTREAM_REPO" --state open \
           --base "main" \
-          --head "$FEATURE_BRANCH" \
+          --head "$FORK_OWNER:$FEATURE_BRANCH" \
           --json number,isDraft --jq '.[0] // empty' \
           < /dev/null 2>/dev/null || echo "")
 

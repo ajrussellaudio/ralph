@@ -32,18 +32,10 @@ If either check fails and you cannot fix it after a genuine effort, **do not ope
 
 If the checks passed:
 
-**Update `CHANGELOG.md`** in the repo root before committing:
+**Update `CHANGELOG.md`** in the repo root before committing — but **only if the file already exists**. If there is no `CHANGELOG.md`, log "No CHANGELOG.md found — skipping" and move on.
 
-- If `CHANGELOG.md` does not exist, create it with this header:
-  ```
-  # Changelog
+When updating an existing `CHANGELOG.md`:
 
-  All notable changes to this project will be documented in this file.
-
-  The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-
-  ## [Unreleased]
-  ```
 - Add an entry under `## [Unreleased]` using the appropriate subsection (`### Added`, `### Changed`, `### Fixed`, `### Removed`). One concise bullet per logical change. Include the issue number in parentheses, e.g.:
   ```
   ### Added
