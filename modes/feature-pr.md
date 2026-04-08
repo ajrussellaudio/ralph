@@ -12,7 +12,7 @@ Check whether any open `{{FEATURE_BRANCH}} → main` PR already exists against t
 gh pr list --repo {{UPSTREAM_REPO}} --state open --base main --head {{FORK_OWNER}}:{{FEATURE_BRANCH}} --json number,isDraft --jq '.[0]' < /dev/null
 ```
 
-- If a PR exists and **is not a draft** (i.e. already ready-for-review), emit `<promise>STOP</promise>` immediately and do nothing else.
+- If a PR exists and **is not a draft** (i.e. already ready-for-review), emit `<promise>COMPLETE</promise>` immediately and do nothing else.
 - If a PR exists and **is a draft**, note its number — you will update and promote it in Step 3 instead of creating a new one. Continue to Step 2.
 - If no PR exists, you will create a new one in Step 3. Continue to Step 2.
 
@@ -76,10 +76,10 @@ When composing the PR description, use cross-repo issue-close syntax so the issu
 
 **You must never review, approve, or merge this PR.** Your role ends the moment the PR is opened. This PR is for human review only. Do not request a review, do not approve it, and do not merge it under any circumstances.
 
-## Step 4 — Stop
+## Step 4 — Complete
 
 Emit this token as your **final output** and stop:
 
-<promise>STOP</promise>
+<promise>COMPLETE</promise>
 
 Any output after this token violates the rules.
