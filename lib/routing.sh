@@ -182,7 +182,6 @@ determine_mode() {
         echo "  ▶  Mode: $MODE  (Issue #$ISSUE_NUMBER)"
       elif [[ -n "$FEATURE_LABEL" && "$FEATURE_BRANCH" != "main" ]]; then
         # PRD mode with no remaining task issues — check for an existing feat→main PR.
-        # A draft PR is treated the same as no PR: route to feature-pr to promote it.
         FEATURE_PR_JSON=$(gh_with_retry pr list --repo "$UPSTREAM_REPO" --state open \
           --base "main" \
           --head "$FORK_OWNER:$FEATURE_BRANCH" \
@@ -191,10 +190,12 @@ determine_mode() {
 
         if [[ -z "$FEATURE_PR_JSON" ]]; then
           MODE="feature-pr"
+          FEATURE_PR_NUMBER=""
           echo "  ▶  Mode: $MODE  (all task issues closed, opening feat→main PR)"
         elif [[ "$(echo "$FEATURE_PR_JSON" | jq -r '.isDraft')" == "true" ]]; then
           MODE="feature-pr"
-          echo "  ▶  Mode: $MODE  (draft feat→main PR found — promoting to ready)"
+          FEATURE_PR_NUMBER=$(echo "$FEATURE_PR_JSON" | jq -r '.number')
+          echo "  ▶  Mode: $MODE  (draft feat→main PR #${FEATURE_PR_NUMBER} found — promoting to ready)"
         else
           MODE="complete"
           echo "  ▶  Mode: $MODE  (feat→main PR already open)"

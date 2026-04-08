@@ -4,19 +4,11 @@ All task issues under `{{FEATURE_LABEL}}` are closed and all task PRs have been 
 
 ⚠️ **Never** use `gh pr comment --body "..."` — it hangs waiting for stdin. Always write the body to a temp file and use `--body-file <file> < /dev/null`.
 
-## Step 1 — Check for existing PR
+## Existing draft PR
 
-Check whether any open `{{FEATURE_BRANCH}} → main` PR already exists against the upstream repo (draft or otherwise):
+{{FEATURE_PR_SECTION}}
 
-```bash
-gh pr list --repo {{UPSTREAM_REPO}} --state open --base main --head {{FORK_OWNER}}:{{FEATURE_BRANCH}} --json number,isDraft --jq '.[0]' < /dev/null
-```
-
-- If a PR exists and **is not a draft** (i.e. already ready-for-review), emit `<promise>COMPLETE</promise>` immediately and do nothing else.
-- If a PR exists and **is a draft**, note its number — you will update and promote it in Step 3 instead of creating a new one. Continue to Step 2.
-- If no PR exists, you will create a new one in Step 3. Continue to Step 2.
-
-## Step 2 — Gather context
+## Step 1 — Gather context
 
 Find the parent PRD issue (the issue labelled both `{{FEATURE_LABEL}}` and `prd`):
 
@@ -31,7 +23,7 @@ gh issue list --repo {{REPO}} --state closed --label "{{FEATURE_LABEL}}" --json 
   --jq '[.[] | select(.labels | map(.name) | any(. == "prd") | not)]' < /dev/null
 ```
 
-## Step 3 — Open or update the pull request
+## Step 2 — Open or update the pull request
 
 Compose a PR description that:
 - Opens with a one-paragraph summary of what the feature does
@@ -41,7 +33,7 @@ Compose a PR description that:
 
 Write the description to a temp file (never use `--body "..."` inline).
 
-**If a draft PR already exists** (from Step 1), update its title and body, then promote it to ready-for-review:
+**If a draft PR already exists** (see above), update its title and body, then promote it to ready-for-review:
 
 ```bash
 # Update the title and body
@@ -76,7 +68,7 @@ When composing the PR description, use cross-repo issue-close syntax so the issu
 
 **You must never review, approve, or merge this PR.** Your role ends the moment the PR is opened. This PR is for human review only. Do not request a review, do not approve it, and do not merge it under any circumstances.
 
-## Step 4 — Complete
+## Step 3 — Complete
 
 Emit this token as your **final output** and stop:
 

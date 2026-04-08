@@ -330,6 +330,14 @@ build_prompt() {
       --json headRefName --jq '.headRefName' < /dev/null 2>/dev/null || echo "")
   fi
 
+  # Build the feature-pr section: tells Copilot whether to create or promote.
+  local feature_pr_section=""
+  if [[ -n "${FEATURE_PR_NUMBER:-}" ]]; then
+    feature_pr_section="A draft PR (#${FEATURE_PR_NUMBER}) already exists. You will update and promote it in Step 2."
+  else
+    feature_pr_section="No existing PR. You will create a new one in Step 2."
+  fi
+
   PROMPT=$(cat "$mode_file")
   PROMPT="${PROMPT//\{\{REPO\}\}/$REPO}"
   PROMPT="${PROMPT//\{\{PR_NUMBER\}\}/$PR_NUMBER}"
@@ -342,6 +350,8 @@ build_prompt() {
   PROMPT="${PROMPT//\{\{REVIEW_BACKEND\}\}/$REVIEW_BACKEND}"
   PROMPT="${PROMPT//\{\{UPSTREAM_REPO\}\}/$UPSTREAM_REPO}"
   PROMPT="${PROMPT//\{\{FORK_OWNER\}\}/$FORK_OWNER}"
+  PROMPT="${PROMPT//\{\{FEATURE_PR_NUMBER\}\}/${FEATURE_PR_NUMBER:-}}"
+  PROMPT="${PROMPT//\{\{FEATURE_PR_SECTION\}\}/$feature_pr_section}"
 }
 
 # ── Post-merge bookkeeping ────────────────────────────────────────────────────

@@ -149,9 +149,10 @@ setup() {
   determine_mode
 
   [ "$MODE" = "feature-pr" ]
+  [ -z "$FEATURE_PR_NUMBER" ]
 }
 
-@test "copilot: no open PRs, no open issues, draft feat→main PR → feature-pr" {
+@test "copilot: no open PRs, no open issues, draft feat→main PR → feature-pr with PR number" {
   export REVIEW_BACKEND=copilot
   export FEATURE_LABEL="prd/now-with-forks"
   export MOCK_PR_LIST_RESPONSE='[]'
@@ -161,6 +162,7 @@ setup() {
   determine_mode
 
   [ "$MODE" = "feature-pr" ]
+  [ "$FEATURE_PR_NUMBER" = "5" ]
 }
 
 @test "copilot: no open PRs, no open issues, non-draft feat→main PR → complete" {
@@ -278,6 +280,44 @@ setup() {
   export REVIEW_BACKEND=comments
   export MOCK_PR_LIST_RESPONSE='[]'
   export MOCK_ISSUE_LIST_RESPONSE='[]'
+
+  determine_mode
+
+  [ "$MODE" = "complete" ]
+}
+
+@test "comments: no open PRs, no open issues, no feat→main PR → feature-pr" {
+  export REVIEW_BACKEND=comments
+  export FEATURE_LABEL="prd/now-with-forks"
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_ISSUE_LIST_RESPONSE='[]'
+  export MOCK_FEATURE_PR_LIST_RESPONSE='[]'
+
+  determine_mode
+
+  [ "$MODE" = "feature-pr" ]
+  [ -z "$FEATURE_PR_NUMBER" ]
+}
+
+@test "comments: no open PRs, no open issues, draft feat→main PR → feature-pr with PR number" {
+  export REVIEW_BACKEND=comments
+  export FEATURE_LABEL="prd/now-with-forks"
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_ISSUE_LIST_RESPONSE='[]'
+  export MOCK_FEATURE_PR_LIST_RESPONSE='[{"number":12,"isDraft":true}]'
+
+  determine_mode
+
+  [ "$MODE" = "feature-pr" ]
+  [ "$FEATURE_PR_NUMBER" = "12" ]
+}
+
+@test "comments: no open PRs, no open issues, non-draft feat→main PR → complete" {
+  export REVIEW_BACKEND=comments
+  export FEATURE_LABEL="prd/now-with-forks"
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_ISSUE_LIST_RESPONSE='[]'
+  export MOCK_FEATURE_PR_LIST_RESPONSE='[{"number":12,"isDraft":false}]'
 
   determine_mode
 
