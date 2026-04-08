@@ -182,10 +182,13 @@ determine_mode() {
         echo "  ▶  Mode: $MODE  (Issue #$ISSUE_NUMBER)"
       elif [[ -n "$FEATURE_LABEL" && "$FEATURE_BRANCH" != "main" ]]; then
         # PRD mode with no remaining task issues — check for an existing feat→main PR.
-        FEATURE_PR_JSON=$(gh_with_retry pr list --repo "$UPSTREAM_REPO" --state open \
-          --base "main" \
-          --head "$FORK_OWNER:$FEATURE_BRANCH" \
-          --json number,isDraft --jq '.[0] // empty' \
+        # Uses the REST API because gh pr list --head OWNER:BRANCH is unreliable
+        # for cross-fork PRs.
+        FEATURE_PR_JSON=$(gh_with_retry api "/repos/${UPSTREAM_REPO}/pulls" \
+          -f state=open \
+          -f base=main \
+          -f "head=${FORK_OWNER}:${FEATURE_BRANCH}" \
+          --jq '.[0] // empty | {number, isDraft: .draft}' \
           < /dev/null 2>/dev/null || echo "")
 
         if [[ -z "$FEATURE_PR_JSON" ]]; then

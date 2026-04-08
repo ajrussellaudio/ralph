@@ -32,6 +32,7 @@ while [[ $# -gt 0 ]]; do
     --jq)     JQ_FILTER="$2";   shift 2 ;;
     --json)   JSON_FIELDS="$2"; shift 2 ;;
     --head)   HAS_HEAD="true";  shift 2 ;;
+    -f)       shift 2 ;;
     --repo|--base|--state|--label|--limit) shift 2 ;;
     *)        POSITIONAL+=("$1"); shift ;;
   esac
@@ -71,6 +72,8 @@ case "$CMD" in
       apply_jq "$MOCK_APPS_RESPONSE"
     elif [[ "$ENDPOINT" == *"/reviews" ]]; then
       apply_jq "$MOCK_REVIEWS_RESPONSE"
+    elif [[ "$ENDPOINT" == *"/pulls" ]]; then
+      apply_jq "$MOCK_FEATURE_PR_LIST_RESPONSE"
     elif [[ "$ENDPOINT" == "/rate_limit" ]]; then
       [[ "${MOCK_RATE_LIMIT_EXIT:-0}" == "0" ]] || exit "${MOCK_RATE_LIMIT_EXIT}"
       echo '{}'

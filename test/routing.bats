@@ -157,7 +157,7 @@ setup() {
   export FEATURE_LABEL="prd/now-with-forks"
   export MOCK_PR_LIST_RESPONSE='[]'
   export MOCK_ISSUE_LIST_RESPONSE='[]'
-  export MOCK_FEATURE_PR_LIST_RESPONSE='[{"number":5,"isDraft":true}]'
+  export MOCK_FEATURE_PR_LIST_RESPONSE='[{"number":5,"draft":true}]'
 
   determine_mode
 
@@ -170,7 +170,7 @@ setup() {
   export FEATURE_LABEL="prd/now-with-forks"
   export MOCK_PR_LIST_RESPONSE='[]'
   export MOCK_ISSUE_LIST_RESPONSE='[]'
-  export MOCK_FEATURE_PR_LIST_RESPONSE='[{"number":5,"isDraft":false}]'
+  export MOCK_FEATURE_PR_LIST_RESPONSE='[{"number":5,"draft":false}]'
 
   determine_mode
 
@@ -304,7 +304,7 @@ setup() {
   export FEATURE_LABEL="prd/now-with-forks"
   export MOCK_PR_LIST_RESPONSE='[]'
   export MOCK_ISSUE_LIST_RESPONSE='[]'
-  export MOCK_FEATURE_PR_LIST_RESPONSE='[{"number":12,"isDraft":true}]'
+  export MOCK_FEATURE_PR_LIST_RESPONSE='[{"number":12,"draft":true}]'
 
   determine_mode
 
@@ -317,7 +317,7 @@ setup() {
   export FEATURE_LABEL="prd/now-with-forks"
   export MOCK_PR_LIST_RESPONSE='[]'
   export MOCK_ISSUE_LIST_RESPONSE='[]'
-  export MOCK_FEATURE_PR_LIST_RESPONSE='[{"number":12,"isDraft":false}]'
+  export MOCK_FEATURE_PR_LIST_RESPONSE='[{"number":12,"draft":false}]'
 
   determine_mode
 
