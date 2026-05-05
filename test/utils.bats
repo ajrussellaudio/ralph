@@ -326,3 +326,123 @@ STUB
   [ "$status" -eq 2 ]
   [ "$(cat "$MOCK_JIRA_COUNTER_FILE")" -eq 3 ]
 }
+
+# ─── jira_priority_rank ───────────────────────────────────────────────────────
+
+@test "jira_priority_rank: Highest → 1" {
+  [ "$(jira_priority_rank Highest)" = "1" ]
+}
+
+@test "jira_priority_rank: High → 2" {
+  [ "$(jira_priority_rank High)" = "2" ]
+}
+
+@test "jira_priority_rank: Medium → 3" {
+  [ "$(jira_priority_rank Medium)" = "3" ]
+}
+
+@test "jira_priority_rank: Low → 4" {
+  [ "$(jira_priority_rank Low)" = "4" ]
+}
+
+@test "jira_priority_rank: Lowest → 5" {
+  [ "$(jira_priority_rank Lowest)" = "5" ]
+}
+
+@test "jira_priority_rank: empty → 6" {
+  [ "$(jira_priority_rank "")" = "6" ]
+}
+
+@test "jira_priority_rank: unknown → 6" {
+  [ "$(jira_priority_rank "Wibble")" = "6" ]
+}
+
+# ─── jira_pick_next ───────────────────────────────────────────────────────────
+
+@test "jira_pick_next: empty input → empty output" {
+  out=$(printf '' | jira_pick_next)
+  [ -z "$out" ]
+}
+
+@test "jira_pick_next: single row → that row" {
+  input=$'CAPP-101\tTask\tHello\tMedium'
+  out=$(printf '%s\n' "$input" | jira_pick_next)
+  [ "$out" = "$input" ]
+}
+
+@test "jira_pick_next: orders by priority desc — Highest beats Low and Medium" {
+  input=$'CAPP-201\tTask\tLow one\tLow\nCAPP-202\tTask\tHighest one\tHighest\nCAPP-203\tTask\tMedium one\tMedium'
+  out=$(printf '%s\n' "$input" | jira_pick_next)
+  key=$(printf '%s' "$out" | awk -F '\t' '{print $1}')
+  [ "$key" = "CAPP-202" ]
+}
+
+@test "jira_pick_next: tie-breaks ascending by ticket key within same priority" {
+  input=$'CAPP-303\tTask\tThree\tHigh\nCAPP-301\tTask\tOne\tHigh\nCAPP-302\tTask\tTwo\tHigh'
+  out=$(printf '%s\n' "$input" | jira_pick_next)
+  key=$(printf '%s' "$out" | awk -F '\t' '{print $1}')
+  [ "$key" = "CAPP-301" ]
+}
+
+@test "jira_pick_next: missing priority column → ranks lowest, key tie-break" {
+  # Three-column rows (no priority) should all rank as 6, so lowest key wins.
+  input=$'CAPP-105\tTask\tFive\nCAPP-101\tTask\tOne\nCAPP-103\tTask\tThree'
+  out=$(printf '%s\n' "$input" | jira_pick_next)
+  key=$(printf '%s' "$out" | awk -F '\t' '{print $1}')
+  [ "$key" = "CAPP-101" ]
+}
+
+@test "jira_pick_next: ignores blank lines" {
+  input=$'\nCAPP-101\tTask\tHello\tMedium\n\n'
+  out=$(printf '%s' "$input" | jira_pick_next)
+  key=$(printf '%s' "$out" | awk -F '\t' '{print $1}')
+  [ "$key" = "CAPP-101" ]
+}
+
+# ─── jira_filter_unblocked ────────────────────────────────────────────────────
+
+@test "jira_filter_unblocked: no blockers configured → all rows pass through" {
+  cp "$REPO_ROOT/test/helpers/jira" "$BATS_TEST_TMPDIR/mock-bin/jira"
+  chmod +x "$BATS_TEST_TMPDIR/mock-bin/jira"
+
+  input=$'CAPP-101\tTask\tOne\tMedium\nCAPP-102\tTask\tTwo\tHigh'
+  out=$(printf '%s\n' "$input" | jira_filter_unblocked)
+  [ "$out" = "$input" ]
+}
+
+@test "jira_filter_unblocked: row with non-Done blocker is dropped" {
+  cp "$REPO_ROOT/test/helpers/jira" "$BATS_TEST_TMPDIR/mock-bin/jira"
+  chmod +x "$BATS_TEST_TMPDIR/mock-bin/jira"
+
+  # CAPP-101 is blocked by CAPP-999 (open). CAPP-102 has no blockers.
+  export MOCK_JIRA_BLOCKERS_CAPP_101="CAPP-999"
+
+  input=$'CAPP-101\tTask\tOne\tMedium\nCAPP-102\tTask\tTwo\tHigh'
+  out=$(printf '%s\n' "$input" | jira_filter_unblocked)
+  echo "$out" | grep -qv "CAPP-101"
+  echo "$out" | grep -q "CAPP-102"
+}
+
+@test "jira_filter_unblocked: empty blocker response means unblocked" {
+  cp "$REPO_ROOT/test/helpers/jira" "$BATS_TEST_TMPDIR/mock-bin/jira"
+  chmod +x "$BATS_TEST_TMPDIR/mock-bin/jira"
+
+  # Explicitly empty — JQL filter (statusCategory != Done) returned nothing.
+  export MOCK_JIRA_BLOCKERS_CAPP_101=""
+
+  input=$'CAPP-101\tTask\tOne\tMedium'
+  out=$(printf '%s\n' "$input" | jira_filter_unblocked)
+  [ "$out" = "$input" ]
+}
+
+@test "jira_filter_unblocked: all rows blocked → empty output" {
+  cp "$REPO_ROOT/test/helpers/jira" "$BATS_TEST_TMPDIR/mock-bin/jira"
+  chmod +x "$BATS_TEST_TMPDIR/mock-bin/jira"
+
+  export MOCK_JIRA_BLOCKERS_CAPP_101="CAPP-999"
+  export MOCK_JIRA_BLOCKERS_CAPP_102="CAPP-998"
+
+  input=$'CAPP-101\tTask\tOne\tMedium\nCAPP-102\tTask\tTwo\tHigh'
+  out=$(printf '%s\n' "$input" | jira_filter_unblocked | sed '/^[[:space:]]*$/d')
+  [ -z "$out" ]
+}

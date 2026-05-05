@@ -143,23 +143,20 @@ determine_mode() {
     if [[ "${TASK_BACKEND:-github}" == "jira" ]]; then
       echo "  🎫 No open ralph PRs — checking JIRA subtasks of ${PARENT_TICKET}…"
 
-      local _subtasks _first_line
+      local _subtasks _filtered _first_line
       _subtasks=$(jira_open_subtasks "$PARENT_TICKET" 2>/dev/null || echo "")
-      _first_line=$(printf '%s\n' "$_subtasks" | sed '/^[[:space:]]*$/d' | head -n 1)
+      _filtered=$(printf '%s\n' "$_subtasks" | sed '/^[[:space:]]*$/d' | jira_filter_unblocked)
+      _first_line=$(printf '%s\n' "$_filtered" | sed '/^[[:space:]]*$/d' | jira_pick_next)
 
       if [[ -n "$_first_line" ]]; then
         TASK_ID=$(printf '%s' "$_first_line" | awk -F '\t' '{print $1}')
         TASK_TYPE=$(printf '%s' "$_first_line" | awk -F '\t' '{print $2}')
-        TASK_SUMMARY=$(printf '%s' "$_first_line" | awk -F '\t' '{
-          out=""
-          for (i=3; i<=NF; i++) { out = (i==3 ? $i : out "\t" $i) }
-          print out
-        }')
+        TASK_SUMMARY=$(printf '%s' "$_first_line" | awk -F '\t' '{print $3}')
         MODE="implement"
         export TASK_ID TASK_TYPE TASK_SUMMARY
         echo "  ▶  Mode: $MODE  (Ticket $TASK_ID)"
       else
-        echo "  ▶  No open subtasks found for $PARENT_TICKET"
+        echo "  ▶  No open (unblocked) subtasks found for $PARENT_TICKET"
         MODE=""
       fi
       return 0

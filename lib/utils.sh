@@ -97,13 +97,75 @@ jira_kebab_summary() {
 
 # jira_open_subtasks PARENT_KEY
 # Lists open subtasks of the parent ticket via jira-cli.
-# Output: TSV, one subtask per line — `key<TAB>type<TAB>summary`.
+# Output: TSV, one subtask per line — `key<TAB>type<TAB>summary<TAB>priority`.
 jira_open_subtasks() {
   local parent="$1"
   jira_with_retry issue list \
     --jql "parent = $parent AND statusCategory != Done" \
     --plain --no-headers \
-    --columns "key,type,summary" < /dev/null
+    --columns "key,type,summary,priority" < /dev/null
+}
+
+# jira_blockers KEY
+# Lists open "is blocked by" linked issues for KEY (i.e. tickets that block KEY
+# whose statusCategory is not Done). Output: one ticket key per line, or empty.
+jira_blockers() {
+  local key="$1"
+  jira_with_retry issue list \
+    --jql "issue in linkedIssues(\"$key\", \"is blocked by\") AND statusCategory != Done" \
+    --plain --no-headers \
+    --columns "key" < /dev/null 2>/dev/null || true
+}
+
+# jira_filter_unblocked
+# Reads TSV subtask rows on stdin (`key<TAB>type<TAB>summary[<TAB>priority]`)
+# and drops any whose open "is blocked by" links point to non-Done tickets.
+# Outputs the remaining rows verbatim on stdout.
+jira_filter_unblocked() {
+  local line key blockers
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    key=$(printf '%s' "$line" | awk -F '\t' '{print $1}')
+    [[ -z "$key" ]] && continue
+    blockers=$(jira_blockers "$key" | sed '/^[[:space:]]*$/d')
+    if [[ -z "$blockers" ]]; then
+      printf '%s\n' "$line"
+    fi
+  done
+}
+
+# jira_priority_rank PRIORITY
+# Maps a JIRA Priority name to a numeric sort rank (lower = higher priority).
+#   Highest → 1, High → 2, Medium → 3, Low → 4, Lowest → 5
+#   anything else (empty, unknown) → 6
+jira_priority_rank() {
+  case "${1:-}" in
+    Highest|highest) echo 1 ;;
+    High|high) echo 2 ;;
+    Medium|medium) echo 3 ;;
+    Low|low) echo 4 ;;
+    Lowest|lowest) echo 5 ;;
+    *) echo 6 ;;
+  esac
+}
+
+# jira_pick_next
+# Reads TSV subtask rows on stdin (`key<TAB>type<TAB>summary[<TAB>priority]`),
+# sorts by Priority descending (Highest first) with ascending ticket-key tie-break,
+# and prints the single highest-priority row to stdout. Empty input → no output.
+jira_pick_next() {
+  local line out=""
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    local key prio rank
+    key=$(printf '%s' "$line" | awk -F '\t' '{print $1}')
+    [[ -z "$key" ]] && continue
+    prio=$(printf '%s' "$line" | awk -F '\t' '{print $4}')
+    rank=$(jira_priority_rank "$prio")
+    out+="${rank}	${key}	${line}"$'\n'
+  done
+  [[ -z "$out" ]] && return 0
+  printf '%s' "$out" | LC_ALL=C sort -t$'\t' -k1,1n -k2,2 | head -n 1 | cut -f3-
 }
 
 # jira_transition KEY STATE

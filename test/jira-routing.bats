@@ -29,6 +29,9 @@ setup() {
         MOCK_ISSUE_LIST_RESPONSE MOCK_ISSUE_VIEW_RESPONSE \
         MOCK_JIRA_ISSUE_LIST_RESPONSE MOCK_JIRA_ISSUE_VIEW_RESPONSE \
         MOCK_JIRA_TRANSITION_LOG \
+        MOCK_JIRA_BLOCKERS_CAPP_101 MOCK_JIRA_BLOCKERS_CAPP_102 \
+        MOCK_JIRA_BLOCKERS_CAPP_201 MOCK_JIRA_BLOCKERS_CAPP_202 MOCK_JIRA_BLOCKERS_CAPP_203 \
+        MOCK_JIRA_BLOCKERS_CAPP_301 MOCK_JIRA_BLOCKERS_CAPP_302 MOCK_JIRA_BLOCKERS_CAPP_303 \
         MODE TASK_ID TASK_TYPE TASK_SUMMARY \
         || true
 }
@@ -110,4 +113,73 @@ setup() {
 
   [ "$MODE" = "implement" ]
   [ -z "${PR_NUMBER:-}" ]
+}
+
+# ─── Priority ordering ───────────────────────────────────────────────────────
+
+@test "jira: highest priority subtask wins across mixed priorities" {
+  export MOCK_PR_LIST_RESPONSE='[]'
+  # Three subtasks: Low, Highest, Medium — Highest should win regardless of order.
+  export MOCK_JIRA_ISSUE_LIST_RESPONSE=$'CAPP-201\tTask\tLow one\tLow\nCAPP-202\tTask\tHighest one\tHighest\nCAPP-203\tTask\tMedium one\tMedium'
+
+  determine_mode
+
+  [ "$MODE" = "implement" ]
+  [ "$TASK_ID" = "CAPP-202" ]
+  [ "$TASK_TYPE" = "Task" ]
+  [ "$TASK_SUMMARY" = "Highest one" ]
+}
+
+@test "jira: ticket-key tie-break within same priority (ascending)" {
+  export MOCK_PR_LIST_RESPONSE='[]'
+  # All High; lowest key (CAPP-301) should win.
+  export MOCK_JIRA_ISSUE_LIST_RESPONSE=$'CAPP-303\tTask\tThree\tHigh\nCAPP-301\tTask\tOne\tHigh\nCAPP-302\tTask\tTwo\tHigh'
+
+  determine_mode
+
+  [ "$MODE" = "implement" ]
+  [ "$TASK_ID" = "CAPP-301" ]
+  [ "$TASK_SUMMARY" = "One" ]
+}
+
+# ─── Blocker filtering ───────────────────────────────────────────────────────
+
+@test "jira: subtask with open 'is blocked by' link to non-Done ticket is skipped" {
+  export MOCK_PR_LIST_RESPONSE='[]'
+  # CAPP-101 is highest priority but blocked by an open ticket → CAPP-102 wins.
+  export MOCK_JIRA_ISSUE_LIST_RESPONSE=$'CAPP-101\tTask\tBlocked one\tHighest\nCAPP-102\tTask\tFree one\tMedium'
+  export MOCK_JIRA_BLOCKERS_CAPP_101="CAPP-999"
+
+  determine_mode
+
+  [ "$MODE" = "implement" ]
+  [ "$TASK_ID" = "CAPP-102" ]
+  [ "$TASK_SUMMARY" = "Free one" ]
+}
+
+@test "jira: subtask becomes eligible once its blocker is Done" {
+  export MOCK_PR_LIST_RESPONSE='[]'
+  # Same setup as above, but the blocker is now Done — JQL filter (statusCategory
+  # != Done) returns no rows for CAPP-101's blockers, so it becomes eligible
+  # and (being Highest priority) wins over CAPP-102.
+  export MOCK_JIRA_ISSUE_LIST_RESPONSE=$'CAPP-101\tTask\tWas blocked\tHighest\nCAPP-102\tTask\tFree one\tMedium'
+  export MOCK_JIRA_BLOCKERS_CAPP_101=""
+
+  determine_mode
+
+  [ "$MODE" = "implement" ]
+  [ "$TASK_ID" = "CAPP-101" ]
+  [ "$TASK_SUMMARY" = "Was blocked" ]
+}
+
+@test "jira: all open subtasks blocked → MODE unset (falls through to no-subtasks branch)" {
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_JIRA_ISSUE_LIST_RESPONSE=$'CAPP-101\tTask\tOne\tHigh\nCAPP-102\tTask\tTwo\tMedium'
+  export MOCK_JIRA_BLOCKERS_CAPP_101="CAPP-998"
+  export MOCK_JIRA_BLOCKERS_CAPP_102="CAPP-999"
+
+  determine_mode
+
+  [ -z "${MODE:-}" ]
+  [ -z "${TASK_ID:-}" ]
 }
