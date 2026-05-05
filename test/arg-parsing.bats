@@ -115,3 +115,67 @@ RALPH="$REPO_ROOT/ralph.sh"
   [ "$status" -eq 1 ]
   echo "$output" | grep -qi "usage\|--max-iterations"
 }
+
+# ─── run subcommand: --ticket flag (JIRA backend) ────────────────────────────
+
+@test "run --ticket=CAPP-123: parses successfully, exposes JIRA backend vars" {
+  run env RALPH_PARSE_ONLY=1 "$RALPH" run --ticket=CAPP-123
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "PARENT_TICKET=CAPP-123"
+  echo "$output" | grep -q "PROJECT_KEY=CAPP"
+  echo "$output" | grep -q "TASK_BACKEND=jira"
+}
+
+@test "run --ticket=PROJ-1: minimum-shape ticket accepted" {
+  run env RALPH_PARSE_ONLY=1 "$RALPH" run --ticket=PROJ-1
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "PARENT_TICKET=PROJ-1"
+  echo "$output" | grep -q "PROJECT_KEY=PROJ"
+  echo "$output" | grep -q "TASK_BACKEND=jira"
+}
+
+@test "run --ticket=invalid: exits with usage error" {
+  run env RALPH_PARSE_ONLY=1 "$RALPH" run --ticket=not-a-ticket
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -qi "usage\|--ticket"
+}
+
+@test "run --ticket without value: exits with usage error" {
+  run env RALPH_PARSE_ONLY=1 "$RALPH" run --ticket
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -qi "usage\|--ticket"
+}
+
+@test "run --label only: TASK_BACKEND defaults to github" {
+  run env RALPH_PARSE_ONLY=1 "$RALPH" run --label=foo-widget
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "TASK_BACKEND=github"
+}
+
+@test "run with no flags: TASK_BACKEND defaults to github" {
+  run env RALPH_PARSE_ONLY=1 "$RALPH" run
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "TASK_BACKEND=github"
+}
+
+# ─── run subcommand: --ticket mutex ─────────────────────────────────────────
+
+@test "run --ticket + --label: exits non-zero with mutex error" {
+  run env RALPH_PARSE_ONLY=1 "$RALPH" run --ticket=CAPP-123 --label=foo
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -qi "mutually exclusive\|cannot.*combine\|--ticket.*--label\|mutex"
+}
+
+@test "run --ticket + --issue: exits non-zero with mutex error" {
+  run env RALPH_PARSE_ONLY=1 "$RALPH" run --ticket=CAPP-123 --issue=42
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -qi "mutually exclusive\|cannot.*combine\|--ticket.*--issue\|mutex"
+}
+
+# ─── status subcommand: --ticket flag (stub-accept) ──────────────────────────
+
+@test "status --ticket=CAPP-123: parses successfully (stub-accept)" {
+  run env RALPH_PARSE_ONLY=1 "$RALPH" status --ticket=CAPP-123
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "SUBCOMMAND=status"
+}

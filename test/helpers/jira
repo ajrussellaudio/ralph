@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Mock jira-cli for bats tests.
+#
+# Reads response data from MOCK_* environment variables:
+#
+#   MOCK_JIRA_AUTH_EXIT  Non-zero to simulate unauthenticated `jira me` (default 0)
+
+if [[ "${1:-}" == "me" ]]; then
+  exit "${MOCK_JIRA_AUTH_EXIT:-0}"
+fi
+
+# Default: behave like a present, working binary for any other invocation.
+exit 0

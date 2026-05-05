@@ -110,6 +110,28 @@ ralph_doctor() {
     fi
   fi
 
+  # ── JIRA backend warnings (only when TASK_BACKEND=jira) ────────────────────
+  # These are warnings, never hard failures: the GitHub path remains usable
+  # even if jira-cli is missing or unauthenticated.
+
+  if [[ "${TASK_BACKEND:-}" == "jira" ]]; then
+    # 10. jira-cli in PATH
+    if command -v jira >/dev/null 2>&1; then
+      echo "  ✅  jira-cli found in PATH"
+
+      # 11. jira-cli authenticated (uses `jira me` — fails when unauthenticated)
+      if jira me >/dev/null 2>&1; then
+        echo "  ✅  jira-cli is authenticated"
+      else
+        echo "  ⚠️   jira-cli is not authenticated"
+        echo "     → run jira init to authenticate"
+      fi
+    else
+      echo "  ⚠️   jira-cli not found in PATH"
+      echo "     → install jira-cli (https://github.com/ankitpokhrel/jira-cli)"
+    fi
+  fi
+
   echo ""
   if [[ "$hard_fail" -eq 0 ]]; then
     echo "  All checks passed."
