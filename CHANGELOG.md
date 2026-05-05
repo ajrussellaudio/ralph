@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `ralph run --ticket=<KEY-N>` flag: parses JIRA-style ticket references (e.g. `CAPP-123`), exposes `PARENT_TICKET`, `PROJECT_KEY`, and `TASK_BACKEND=jira`; mutually exclusive with `--label` and `--issue`; stub-accepted by `ralph status` (#143)
+- `ralph doctor` jira-cli warning checks: emits a ⚠️ when jira-cli is missing or unauthenticated; only runs when `TASK_BACKEND=jira` so the default 9-check surface is unchanged (#143)
 - `ralph.sh` sources `lib/utils.sh` and uses `gh_with_retry` for every `gh` call site (#134)
 - `lib/routing.sh` now sources `lib/utils.sh` and uses `gh_with_retry` for all `gh` calls (#132)
 - `lib/utils.sh` with `gh_with_retry()`: wraps `gh` with up to 3 attempts; sleeps 1 s before attempt 2 and 2 s before attempt 3; prints a ⚠️ warning to stderr on each failed attempt and a ❌ error after exhaustion; forwards all args, stdin, and exit codes transparently (#131)

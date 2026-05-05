@@ -110,16 +110,30 @@ fi
 if [[ "$SUBCOMMAND" == "status" ]]; then
   FEATURE_LABEL=""
   FEATURE_BRANCH="main"
+  PARENT_TICKET=""
 
   for arg in "$@"; do
     if [[ "$arg" =~ ^--label=(.+)$ ]]; then
       FEATURE_LABEL="prd/${BASH_REMATCH[1]}"
       FEATURE_BRANCH="feat/${BASH_REMATCH[1]}"
+    elif [[ "$arg" =~ ^--ticket=([A-Z][A-Z0-9]*-[1-9][0-9]*)$ ]]; then
+      # Stub-accept: JIRA backend wiring lands in a later slice.
+      PARENT_TICKET="${BASH_REMATCH[1]}"
+    elif [[ "$arg" =~ ^--ticket(=.*)?$ ]]; then
+      echo "Error: --ticket value must look like KEY-NUMBER (e.g. CAPP-123)."
+      echo "Usage: $(basename "$0") status [--label=<label>] [--ticket=<KEY-N>]"
+      exit 1
     else
-      echo "Usage: $(basename "$0") status [--label=<label>]"
+      echo "Usage: $(basename "$0") status [--label=<label>] [--ticket=<KEY-N>]"
       exit 1
     fi
   done
+
+  # --ticket is mutually exclusive with --label (different task backends).
+  if [[ -n "$PARENT_TICKET" && -n "$FEATURE_LABEL" ]]; then
+    echo "Error: --ticket and --label are mutually exclusive (different task backends)."
+    exit 1
+  fi
 
   if [[ "${RALPH_PARSE_ONLY:-}" == "1" ]]; then
     echo "SUBCOMMAND=status"
@@ -164,7 +178,7 @@ fi
 # ── Argument validation (run subcommand) ───────────────────────────────────────
 
 usage() {
-  echo "Usage: $(basename "$0") run [--max-iterations=N] [--label=<label>] [--issue=<N>]"
+  echo "Usage: $(basename "$0") run [--max-iterations=N] [--label=<label>] [--issue=<N>] [--ticket=<KEY-N>]"
   echo ""
   echo "  --max-iterations=N  Optional positive integer — how many Copilot iterations"
   echo "                      to allow before giving up. When omitted, Ralph runs"
@@ -179,17 +193,25 @@ usage() {
   echo "                      issue is merged, Ralph exits cleanly without opening a"
   echo "                      feature PR."
   echo ""
+  echo "  --ticket=<KEY-N>    Optional JIRA ticket reference (e.g. CAPP-123). Switches"
+  echo "                      Ralph's task backend to JIRA. Mutually exclusive with"
+  echo "                      --label and --issue."
+  echo ""
   echo "Examples:"
   echo "  $(basename "$0") run"
   echo "  $(basename "$0") run --label=foo-widget"
   echo "  $(basename "$0") run --max-iterations=20 --label=foo-widget"
   echo "  $(basename "$0") run --max-iterations=20 --issue=82 --label=foo-widget"
+  echo "  $(basename "$0") run --ticket=CAPP-123"
 }
 
 MAX_ITERATIONS=""
 FEATURE_LABEL=""
 FEATURE_BRANCH="main"
 PINNED_ISSUE=""
+PARENT_TICKET=""
+PROJECT_KEY=""
+TASK_BACKEND="github"
 
 for arg in "$@"; do
   if [[ "$arg" =~ ^[1-9][0-9]*$ ]]; then
@@ -205,11 +227,31 @@ for arg in "$@"; do
     FEATURE_BRANCH="feat/${BASH_REMATCH[1]}"
   elif [[ "$arg" =~ ^--issue=([1-9][0-9]*)$ ]]; then
     PINNED_ISSUE="${BASH_REMATCH[1]}"
+  elif [[ "$arg" =~ ^--ticket=([A-Z][A-Z0-9]*-[1-9][0-9]*)$ ]]; then
+    PARENT_TICKET="${BASH_REMATCH[1]}"
+    PROJECT_KEY="${PARENT_TICKET%%-*}"
+    TASK_BACKEND="jira"
+  elif [[ "$arg" =~ ^--ticket(=.*)?$ ]]; then
+    echo "Error: --ticket value must look like KEY-NUMBER (e.g. CAPP-123)."
+    usage
+    exit 1
   else
     usage
     exit 1
   fi
 done
+
+# --ticket is mutually exclusive with --label and --issue (different task backends).
+if [[ -n "$PARENT_TICKET" ]]; then
+  if [[ -n "$FEATURE_LABEL" ]]; then
+    echo "Error: --ticket and --label are mutually exclusive (different task backends)."
+    exit 1
+  fi
+  if [[ -n "$PINNED_ISSUE" ]]; then
+    echo "Error: --ticket and --issue are mutually exclusive (different task backends)."
+    exit 1
+  fi
+fi
 
 # Test hook: exit 0 after successful arg parsing so bats tests can verify
 # arg handling without requiring a full preflight environment.
@@ -217,8 +259,13 @@ if [[ "${RALPH_PARSE_ONLY:-}" == "1" ]]; then
   echo "MAX_ITERATIONS=${MAX_ITERATIONS}"
   echo "FEATURE_BRANCH=${FEATURE_BRANCH}"
   echo "PINNED_ISSUE=${PINNED_ISSUE}"
+  echo "PARENT_TICKET=${PARENT_TICKET}"
+  echo "PROJECT_KEY=${PROJECT_KEY}"
+  echo "TASK_BACKEND=${TASK_BACKEND}"
   exit 0
 fi
+
+export TASK_BACKEND PARENT_TICKET PROJECT_KEY
 
 # Derive the worktree path. Include the PRD slug when --label is set so
 # multiple ralph runs can coexist in parallel on the same machine.
