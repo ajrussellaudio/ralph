@@ -106,6 +106,17 @@ jira_open_subtasks() {
     --columns "key,type,summary,priority" < /dev/null
 }
 
+# jira_all_subtasks PARENT_KEY
+# Lists every subtask of the parent ticket (open + closed) via jira-cli.
+# Output: TSV, one subtask per line — `key<TAB>type<TAB>summary<TAB>status<TAB>priority`.
+jira_all_subtasks() {
+  local parent="$1"
+  jira_with_retry issue list \
+    --jql "parent = $parent" \
+    --plain --no-headers \
+    --columns "key,type,summary,status,priority" < /dev/null
+}
+
 # jira_blockers KEY
 # Lists open "is blocked by" linked issues for KEY (i.e. tickets that block KEY
 # whose statusCategory is not Done). Output: one ticket key per line, or empty.
