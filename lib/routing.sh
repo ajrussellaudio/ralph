@@ -155,9 +155,35 @@ determine_mode() {
         MODE="implement"
         export TASK_ID TASK_TYPE TASK_SUMMARY
         echo "  ▶  Mode: $MODE  (Ticket $TASK_ID)"
-      else
-        echo "  ▶  No open (unblocked) subtasks found for $PARENT_TICKET"
+      elif [[ -n "$(printf '%s\n' "$_subtasks" | sed '/^[[:space:]]*$/d')" ]]; then
+        # Open subtasks exist but they're all blocked — don't open feat→main PR.
+        echo "  ▶  No unblocked subtasks for $PARENT_TICKET (all blocked)"
         MODE=""
+      else
+        echo "  ▶  No open subtasks remain for $PARENT_TICKET — checking feat→main PR…"
+
+        # All subtasks Done — check for an existing feat→main PR.
+        # Uses the REST API because gh pr list --head OWNER:BRANCH is unreliable
+        # for cross-fork PRs.
+        FEATURE_PR_JSON=$(gh_with_retry api "/repos/${UPSTREAM_REPO}/pulls" \
+          -f state=open \
+          -f base=main \
+          -f "head=${FORK_OWNER}:${FEATURE_BRANCH}" \
+          --jq '.[0] // empty | {number, isDraft: .draft}' \
+          < /dev/null 2>/dev/null || echo "")
+
+        if [[ -z "$FEATURE_PR_JSON" ]]; then
+          MODE="feature-pr"
+          FEATURE_PR_NUMBER=""
+          echo "  ▶  Mode: $MODE  (all subtasks Done, opening feat→main PR)"
+        elif [[ "$(echo "$FEATURE_PR_JSON" | jq -r '.isDraft')" == "true" ]]; then
+          MODE="feature-pr"
+          FEATURE_PR_NUMBER=$(echo "$FEATURE_PR_JSON" | jq -r '.number')
+          echo "  ▶  Mode: $MODE  (draft feat→main PR #${FEATURE_PR_NUMBER} found — promoting to ready)"
+        else
+          MODE="complete"
+          echo "  ▶  Mode: $MODE  (feat→main PR already open)"
+        fi
       fi
       return 0
     fi

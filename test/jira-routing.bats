@@ -36,16 +36,39 @@ setup() {
         || true
 }
 
-# ─── No open subtasks ────────────────────────────────────────────────────────
+# ─── No open subtasks → feat→main PR check ──────────────────────────────────
 
-@test "jira: no open subtasks → MODE unset (feature-pr placeholder)" {
+@test "jira: no open subtasks + no feat→main PR → feature-pr (no PR number)" {
   export MOCK_PR_LIST_RESPONSE='[]'
   export MOCK_JIRA_ISSUE_LIST_RESPONSE=''
+  export MOCK_FEATURE_PR_LIST_RESPONSE='[]'
 
   determine_mode
 
-  [ -z "${MODE:-}" ]
+  [ "$MODE" = "feature-pr" ]
+  [ -z "${FEATURE_PR_NUMBER:-}" ]
   [ -z "${TASK_ID:-}" ]
+}
+
+@test "jira: no open subtasks + draft feat→main PR → feature-pr with PR number" {
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_JIRA_ISSUE_LIST_RESPONSE=''
+  export MOCK_FEATURE_PR_LIST_RESPONSE='[{"number":7,"draft":true}]'
+
+  determine_mode
+
+  [ "$MODE" = "feature-pr" ]
+  [ "$FEATURE_PR_NUMBER" = "7" ]
+}
+
+@test "jira: no open subtasks + open ready feat→main PR → complete" {
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_JIRA_ISSUE_LIST_RESPONSE=''
+  export MOCK_FEATURE_PR_LIST_RESPONSE='[{"number":7,"draft":false}]'
+
+  determine_mode
+
+  [ "$MODE" = "complete" ]
 }
 
 # ─── One open subtask → implement ────────────────────────────────────────────
