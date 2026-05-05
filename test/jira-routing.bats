@@ -13,6 +13,11 @@ setup() {
   source "$REPO_ROOT/lib/routing.sh"
 
   export REPO="owner/repo"
+  # Mirror the derivation done by ralph.sh before sourcing routing.sh so the
+  # cross-fork-safe REST endpoint (/repos/${UPSTREAM_REPO}/pulls?head=${FORK_OWNER}:…)
+  # is built with real values rather than empty strings.
+  export UPSTREAM_REPO="${UPSTREAM_REPO:-$REPO}"
+  export FORK_OWNER="${REPO%%/*}"
   export PARENT_TICKET="CAPP-100"
   export PROJECT_KEY="CAPP"
   export TASK_BACKEND="jira"
