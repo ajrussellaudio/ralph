@@ -1,0 +1,113 @@
+#!/usr/bin/env bats
+# Tests for the JIRA branch of determine_mode() in lib/routing.sh.
+#
+# Mock `gh` and `jira` binaries in test/helpers/ are placed first on PATH; they
+# read response data from MOCK_* environment variables.
+
+REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+
+setup() {
+  export PATH="$REPO_ROOT/test/helpers:$PATH"
+
+  # shellcheck source=../lib/routing.sh
+  source "$REPO_ROOT/lib/routing.sh"
+
+  export REPO="owner/repo"
+  export PARENT_TICKET="CAPP-100"
+  export PROJECT_KEY="CAPP"
+  export TASK_BACKEND="jira"
+  export FEATURE_BRANCH="feat/capp-100"
+  export FEATURE_LABEL=""
+  export REVIEW_BACKEND="comments"
+  export MODES_DIR="$REPO_ROOT/modes"
+  export RALPH_TESTING=1
+
+  unset MOCK_APPS_RESPONSE MOCK_APPS_EXIT \
+        MOCK_REVIEWS_RESPONSE \
+        MOCK_PR_LIST_RESPONSE MOCK_FEATURE_PR_LIST_RESPONSE \
+        MOCK_PR_VIEW_COMMENTS_RESPONSE MOCK_PR_VIEW_COMMITS_RESPONSE \
+        MOCK_ISSUE_LIST_RESPONSE MOCK_ISSUE_VIEW_RESPONSE \
+        MOCK_JIRA_ISSUE_LIST_RESPONSE MOCK_JIRA_ISSUE_VIEW_RESPONSE \
+        MOCK_JIRA_TRANSITION_LOG \
+        MODE TASK_ID TASK_TYPE TASK_SUMMARY \
+        || true
+}
+
+# ─── No open subtasks ────────────────────────────────────────────────────────
+
+@test "jira: no open subtasks → MODE unset (feature-pr placeholder)" {
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_JIRA_ISSUE_LIST_RESPONSE=''
+
+  determine_mode
+
+  [ -z "${MODE:-}" ]
+  [ -z "${TASK_ID:-}" ]
+}
+
+# ─── One open subtask → implement ────────────────────────────────────────────
+
+@test "jira: one open subtask → implement with TASK_ID set" {
+  export MOCK_PR_LIST_RESPONSE='[]'
+  # TSV: key<TAB>type<TAB>summary
+  export MOCK_JIRA_ISSUE_LIST_RESPONSE=$'CAPP-101\tTask\tAdd login button'
+
+  determine_mode
+
+  [ "$MODE" = "implement" ]
+  [ "$TASK_ID" = "CAPP-101" ]
+  [ "$TASK_TYPE" = "Task" ]
+  [ "$TASK_SUMMARY" = "Add login button" ]
+}
+
+@test "jira: multiple open subtasks → first one wins" {
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_JIRA_ISSUE_LIST_RESPONSE=$'CAPP-101\tBug\tFix the thing\nCAPP-102\tStory\tAnother thing'
+
+  determine_mode
+
+  [ "$MODE" = "implement" ]
+  [ "$TASK_ID" = "CAPP-101" ]
+  [ "$TASK_TYPE" = "Bug" ]
+}
+
+# ─── PR identification: --author @me filter ──────────────────────────────────
+
+@test "jira: PR list filter excludes other authors' open PRs" {
+  # Mock_gh ignores --author entirely (treats it as a no-op shift); to verify
+  # the filter is in place, we instead check that ralph's branch-pattern jq
+  # filter excludes non-matching head branches.
+  # Here: a PR exists but its head branch doesn't match the JIRA project key,
+  # so determine_mode should fall through to subtask detection.
+  export MOCK_PR_LIST_RESPONSE='[{"number":99,"headRefName":"someone/other-branch"}]'
+  export MOCK_JIRA_ISSUE_LIST_RESPONSE=$'CAPP-101\tTask\tHello world'
+
+  determine_mode
+
+  [ "$MODE" = "implement" ]
+  [ "$TASK_ID" = "CAPP-101" ]
+  [ -z "${PR_NUMBER:-}" ]
+}
+
+@test "jira: PR list with matching JIRA branch → existing PR detected" {
+  export REVIEW_BACKEND="comments"
+  export MOCK_PR_LIST_RESPONSE='[{"number":42,"headRefName":"feat/capp-101-add-login"}]'
+  export MOCK_PR_VIEW_COMMENTS_RESPONSE='{"comments":[]}'
+
+  determine_mode
+
+  [ "$PR_NUMBER" = "42" ]
+  # Without any review or fix comments, comments-backend defaults to "review".
+  [ "$MODE" = "review" ]
+}
+
+@test "jira: PR list filter excludes branches with non-matching project key" {
+  # A different project's PR (DIFF-*) must not be picked up when PROJECT_KEY=CAPP.
+  export MOCK_PR_LIST_RESPONSE='[{"number":99,"headRefName":"feat/diff-1-other"}]'
+  export MOCK_JIRA_ISSUE_LIST_RESPONSE=$'CAPP-101\tTask\tHello'
+
+  determine_mode
+
+  [ "$MODE" = "implement" ]
+  [ -z "${PR_NUMBER:-}" ]
+}

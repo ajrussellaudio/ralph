@@ -267,9 +267,16 @@ fi
 
 export TASK_BACKEND PARENT_TICKET PROJECT_KEY
 
-# Derive the worktree path. Include the PRD slug when --label is set so
-# multiple ralph runs can coexist in parallel on the same machine.
-if [[ -n "$FEATURE_LABEL" ]]; then
+# In JIRA mode, derive the feature branch from the parent ticket.
+if [[ "$TASK_BACKEND" == "jira" ]]; then
+  FEATURE_BRANCH=$(jira_feature_branch "$PARENT_TICKET")
+fi
+
+# Derive the worktree path. Include a unique slug when running against a
+# feature branch so multiple ralph runs can coexist in parallel on the same machine.
+if [[ "$TASK_BACKEND" == "jira" ]]; then
+  WORKTREE_DIR="${GIT_ROOT%/*}/$(basename "$GIT_ROOT")-ralph-$(printf '%s' "$PARENT_TICKET" | tr '[:upper:]' '[:lower:]')"
+elif [[ -n "$FEATURE_LABEL" ]]; then
   WORKTREE_DIR="${GIT_ROOT%/*}/$(basename "$GIT_ROOT")-ralph-${FEATURE_BRANCH#feat/}"
 else
   WORKTREE_DIR="${GIT_ROOT%/*}/$(basename "$GIT_ROOT")-ralph-workspace"
@@ -300,6 +307,20 @@ if [[ -n "$FEATURE_LABEL" && -z "$PINNED_ISSUE" ]]; then
     fi
   else
     echo "Warning: Could not reach GitHub API; skipping PRD preflight check."
+  fi
+fi
+
+# In JIRA mode, validate the parent ticket exists OR the feature branch is
+# already on origin. A typo'd ticket key fails fast here with a clear error.
+if [[ "$TASK_BACKEND" == "jira" ]]; then
+  if jira_with_retry issue view "$PARENT_TICKET" --plain --no-headers --columns key < /dev/null > /dev/null 2>&1; then
+    : # parent ticket exists
+  elif git -C "$GIT_ROOT" ls-remote --exit-code --heads origin "$FEATURE_BRANCH" > /dev/null 2>&1; then
+    echo "  ℹ  JIRA ticket ${PARENT_TICKET} not reachable, but feature branch origin/${FEATURE_BRANCH} exists — continuing."
+  else
+    echo "Error: JIRA ticket '${PARENT_TICKET}' not found, and branch 'origin/${FEATURE_BRANCH}' does not exist."
+    echo "Check that --ticket matches an existing JIRA issue key."
+    exit 1
   fi
 fi
 
@@ -364,9 +385,13 @@ source "$SCRIPT_DIR/lib/routing.sh"
 
 # Loads the mode file and substitutes {{REPO}}, {{PR_NUMBER}}, {{ISSUE_NUMBER}}.
 build_prompt() {
-  local mode_file="$MODES_DIR/$MODE.md"
-  if [[ ! -f "$mode_file" ]]; then
-    echo "  ❌  Mode file not found: $mode_file"
+  local mode_file=""
+  if [[ "${TASK_BACKEND:-github}" == "jira" && -f "$MODES_DIR/jira/$MODE.md" ]]; then
+    mode_file="$MODES_DIR/jira/$MODE.md"
+  elif [[ -f "$MODES_DIR/$MODE.md" ]]; then
+    mode_file="$MODES_DIR/$MODE.md"
+  else
+    echo "  ❌  Mode file not found: $MODES_DIR/$MODE.md"
     exit 1
   fi
 
@@ -385,6 +410,13 @@ build_prompt() {
     feature_pr_section="No existing PR. You will create a new one in Step 2."
   fi
 
+  # Derive JIRA-specific placeholders from TASK_TYPE/TASK_SUMMARY when available.
+  local task_slug="" branch_prefix=""
+  if [[ "${TASK_BACKEND:-github}" == "jira" ]]; then
+    task_slug=$(jira_kebab_summary "${TASK_SUMMARY:-}")
+    branch_prefix=$(jira_branch_prefix "${TASK_TYPE:-}")
+  fi
+
   PROMPT=$(cat "$mode_file")
   PROMPT="${PROMPT//\{\{REPO\}\}/$REPO}"
   PROMPT="${PROMPT//\{\{PR_NUMBER\}\}/$PR_NUMBER}"
@@ -399,6 +431,12 @@ build_prompt() {
   PROMPT="${PROMPT//\{\{FORK_OWNER\}\}/$FORK_OWNER}"
   PROMPT="${PROMPT//\{\{FEATURE_PR_NUMBER\}\}/${FEATURE_PR_NUMBER:-}}"
   PROMPT="${PROMPT//\{\{FEATURE_PR_SECTION\}\}/$feature_pr_section}"
+  PROMPT="${PROMPT//\{\{TASK_BACKEND\}\}/${TASK_BACKEND:-github}}"
+  PROMPT="${PROMPT//\{\{PARENT_TICKET\}\}/${PARENT_TICKET:-}}"
+  PROMPT="${PROMPT//\{\{PROJECT_KEY\}\}/${PROJECT_KEY:-}}"
+  PROMPT="${PROMPT//\{\{TASK_ID\}\}/${TASK_ID:-}}"
+  PROMPT="${PROMPT//\{\{TASK_SLUG\}\}/$task_slug}"
+  PROMPT="${PROMPT//\{\{BRANCH_PREFIX\}\}/$branch_prefix}"
 }
 
 # ── Post-merge bookkeeping ────────────────────────────────────────────────────
@@ -535,6 +573,14 @@ run_loop() {
   fi
 
   build_prompt
+
+  # In JIRA mode, transition the ticket to "In Progress" before invoking Copilot
+  # for the implement step.
+  if [[ "${TASK_BACKEND:-github}" == "jira" && "$MODE" == "implement" && -n "${TASK_ID:-}" ]]; then
+    echo "  🎫 Transitioning ${TASK_ID} → In Progress"
+    jira_transition "$TASK_ID" "In Progress" > /dev/null 2>&1 || \
+      echo "  ⚠️  Could not transition ${TASK_ID} (continuing anyway)"
+  fi
 
   OUTPUT=$(
     cd "$WORKTREE_DIR" && copilot \

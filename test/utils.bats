@@ -196,3 +196,133 @@ STUB
   [[ "$stderr" == *"gh native error"* ]]
   [ "$(echo "$stderr" | grep -c 'gh native error')" -eq 3 ]
 }
+
+# ─── jira_branch_prefix ───────────────────────────────────────────────────────
+
+@test "jira_branch_prefix: Bug → fix" {
+  [ "$(jira_branch_prefix Bug)" = "fix" ]
+}
+
+@test "jira_branch_prefix: Improvement → refactor" {
+  [ "$(jira_branch_prefix Improvement)" = "refactor" ]
+}
+
+@test "jira_branch_prefix: Task → feat" {
+  [ "$(jira_branch_prefix Task)" = "feat" ]
+}
+
+@test "jira_branch_prefix: Sub-task → feat" {
+  [ "$(jira_branch_prefix "Sub-task")" = "feat" ]
+}
+
+@test "jira_branch_prefix: Story → feat" {
+  [ "$(jira_branch_prefix Story)" = "feat" ]
+}
+
+@test "jira_branch_prefix: Spike → feat" {
+  [ "$(jira_branch_prefix Spike)" = "feat" ]
+}
+
+@test "jira_branch_prefix: Epic → feat" {
+  [ "$(jira_branch_prefix Epic)" = "feat" ]
+}
+
+@test "jira_branch_prefix: unknown type → feat" {
+  [ "$(jira_branch_prefix "Some Future Type")" = "feat" ]
+}
+
+@test "jira_branch_prefix: empty → feat" {
+  [ "$(jira_branch_prefix "")" = "feat" ]
+}
+
+# ─── jira_kebab_summary ───────────────────────────────────────────────────────
+
+@test "jira_kebab_summary: simple title → kebab-case" {
+  [ "$(jira_kebab_summary "Add login button")" = "add-login-button" ]
+}
+
+@test "jira_kebab_summary: lowercases all letters" {
+  [ "$(jira_kebab_summary "FOO Bar BAZ")" = "foo-bar-baz" ]
+}
+
+@test "jira_kebab_summary: strips special characters" {
+  [ "$(jira_kebab_summary "Fix: don't crash on @user!")" = "fix-don-t-crash-on-user" ]
+}
+
+@test "jira_kebab_summary: collapses runs of separators" {
+  [ "$(jira_kebab_summary "foo   ___   bar")" = "foo-bar" ]
+}
+
+@test "jira_kebab_summary: trims leading/trailing dashes" {
+  [ "$(jira_kebab_summary "   hello world   ")" = "hello-world" ]
+}
+
+@test "jira_kebab_summary: empty input → empty output" {
+  [ "$(jira_kebab_summary "")" = "" ]
+}
+
+@test "jira_kebab_summary: only-special-chars → empty" {
+  [ "$(jira_kebab_summary "!@#\$%^&*()")" = "" ]
+}
+
+@test "jira_kebab_summary: truncates very long summaries" {
+  long_summary="this is a very long summary that should definitely be truncated to a reasonable length for branches"
+  out=$(jira_kebab_summary "$long_summary")
+  [ "${#out}" -le 50 ]
+  # Should not end with a dash after truncation
+  [[ "$out" != *- ]]
+}
+
+# ─── jira_feature_branch ──────────────────────────────────────────────────────
+
+@test "jira_feature_branch: composes feat/<key>-<slug> from key+summary" {
+  [ "$(jira_feature_branch CAPP-123 "Add login button")" = "feat/capp-123-add-login-button" ]
+}
+
+@test "jira_feature_branch: empty summary → feat/<key> only" {
+  [ "$(jira_feature_branch CAPP-123 "")" = "feat/capp-123" ]
+}
+
+@test "jira_feature_branch: lowercases the project key" {
+  [ "$(jira_feature_branch ABC-9 "Hello World")" = "feat/abc-9-hello-world" ]
+}
+
+# ─── jira_with_retry ──────────────────────────────────────────────────────────
+
+@test "jira_with_retry: first attempt succeeds → exit 0, jira called once" {
+  cp "$REPO_ROOT/test/helpers/mock_jira" "$BATS_TEST_TMPDIR/mock-bin/jira"
+  chmod +x "$BATS_TEST_TMPDIR/mock-bin/jira"
+  export MOCK_JIRA_COUNTER_FILE="$BATS_TEST_TMPDIR/jira_counter"
+  export MOCK_JIRA_FAIL_TIMES=0
+  export MOCK_JIRA_STDOUT="ok"
+
+  run jira_with_retry me
+  [ "$status" -eq 0 ]
+  [ "$output" = "ok" ]
+  [ "$(cat "$MOCK_JIRA_COUNTER_FILE")" -eq 1 ]
+}
+
+@test "jira_with_retry: fails twice then succeeds → exit 0, called 3 times" {
+  cp "$REPO_ROOT/test/helpers/mock_jira" "$BATS_TEST_TMPDIR/mock-bin/jira"
+  chmod +x "$BATS_TEST_TMPDIR/mock-bin/jira"
+  export MOCK_JIRA_COUNTER_FILE="$BATS_TEST_TMPDIR/jira_counter"
+  export MOCK_JIRA_FAIL_TIMES=2
+  export MOCK_JIRA_EXIT=1
+  export MOCK_JIRA_STDOUT="recovered"
+
+  run jira_with_retry issue list
+  [ "$status" -eq 0 ]
+  [ "$(cat "$MOCK_JIRA_COUNTER_FILE")" -eq 3 ]
+}
+
+@test "jira_with_retry: all 3 attempts fail → non-zero exit, called 3 times" {
+  cp "$REPO_ROOT/test/helpers/mock_jira" "$BATS_TEST_TMPDIR/mock-bin/jira"
+  chmod +x "$BATS_TEST_TMPDIR/mock-bin/jira"
+  export MOCK_JIRA_COUNTER_FILE="$BATS_TEST_TMPDIR/jira_counter"
+  export MOCK_JIRA_FAIL_TIMES=99
+  export MOCK_JIRA_EXIT=2
+
+  run jira_with_retry issue list
+  [ "$status" -eq 2 ]
+  [ "$(cat "$MOCK_JIRA_COUNTER_FILE")" -eq 3 ]
+}

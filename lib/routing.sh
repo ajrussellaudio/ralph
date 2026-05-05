@@ -41,10 +41,23 @@ determine_mode() {
   fi
 
   echo "  🔍 Checking for open ralph PRs in ${REPO}…"
+
+  # PR head-branch filter: GitHub backend matches `ralph/issue-*`; JIRA backend
+  # matches feat|fix|refactor branches whose ticket key starts with PROJECT_KEY.
+  local _pr_head_filter
+  if [[ "${TASK_BACKEND:-github}" == "jira" ]]; then
+    local _proj_lower
+    _proj_lower=$(printf '%s' "${PROJECT_KEY:-}" | tr '[:upper:]' '[:lower:]')
+    _pr_head_filter='[.[] | select(.headRefName | test("^(feat|fix|refactor)/'"$_proj_lower"'-"))] | sort_by(.number)'
+  else
+    _pr_head_filter='[.[] | select(.headRefName | startswith("ralph/issue-"))] | sort_by(.number)'
+  fi
+
   OPEN_RALPH_PRS=$(gh_with_retry pr list --repo "$REPO" --state open \
     --base "$FEATURE_BRANCH" \
+    --author "@me" \
     --json number,headRefName \
-    --jq '[.[] | select(.headRefName | startswith("ralph/issue-"))] | sort_by(.number)' \
+    --jq "$_pr_head_filter" \
     < /dev/null 2>/dev/null || echo "[]")
 
   PR_COUNT=$(echo "$OPEN_RALPH_PRS" | jq length)
@@ -127,6 +140,31 @@ determine_mode() {
 
     echo "  ▶  Mode: $MODE  (PR #$PR_NUMBER)"
   else
+    if [[ "${TASK_BACKEND:-github}" == "jira" ]]; then
+      echo "  🎫 No open ralph PRs — checking JIRA subtasks of ${PARENT_TICKET}…"
+
+      local _subtasks _first_line
+      _subtasks=$(jira_open_subtasks "$PARENT_TICKET" 2>/dev/null || echo "")
+      _first_line=$(printf '%s\n' "$_subtasks" | sed '/^[[:space:]]*$/d' | head -n 1)
+
+      if [[ -n "$_first_line" ]]; then
+        TASK_ID=$(printf '%s' "$_first_line" | awk -F '\t' '{print $1}')
+        TASK_TYPE=$(printf '%s' "$_first_line" | awk -F '\t' '{print $2}')
+        TASK_SUMMARY=$(printf '%s' "$_first_line" | awk -F '\t' '{
+          out=""
+          for (i=3; i<=NF; i++) { out = (i==3 ? $i : out "\t" $i) }
+          print out
+        }')
+        MODE="implement"
+        export TASK_ID TASK_TYPE TASK_SUMMARY
+        echo "  ▶  Mode: $MODE  (Ticket $TASK_ID)"
+      else
+        echo "  ▶  No open subtasks found for $PARENT_TICKET"
+        MODE=""
+      fi
+      return 0
+    fi
+
     echo "  🔍 No open ralph PRs — checking issues…"
 
     if [[ -n "${PINNED_ISSUE:-}" ]]; then

@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- JIRA backend wiring for the implement path: `lib/utils.sh` helpers (`jira_with_retry`, `jira_branch_prefix`, `jira_kebab_summary`, `jira_open_subtasks`, `jira_transition`, `jira_feature_branch`); `lib/routing.sh` JIRA branch in `determine_mode` with `--author @me` PR filter; `ralph.sh` worktree/feature-branch derivation, JIRA preflight, and pre-Copilot status transition; `modes/jira/implement.md` mode prompt; mocks (`test/helpers/mock_jira`, extended `test/helpers/jira`); tests in `test/utils.bats` and new `test/jira-routing.bats` (#144)
 - `ralph run --ticket=<KEY-N>` flag: parses JIRA-style ticket references (e.g. `CAPP-123`), exposes `PARENT_TICKET`, `PROJECT_KEY`, and `TASK_BACKEND=jira`; mutually exclusive with `--label` and `--issue`; stub-accepted by `ralph status` (#143)
 - `ralph doctor` jira-cli warning checks: emits a ⚠️ when jira-cli is missing or unauthenticated; only runs when `TASK_BACKEND=jira` so the default 9-check surface is unchanged (#143)
 - `ralph.sh` sources `lib/utils.sh` and uses `gh_with_retry` for every `gh` call site (#134)

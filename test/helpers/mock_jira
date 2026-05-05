@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Mock jira-cli stub for jira_with_retry tests.
+#
+# Reads:
+#   MOCK_JIRA_FAIL_TIMES   — how many times to fail before succeeding (0 = always succeed)
+#   MOCK_JIRA_STDOUT       — what to print on success
+#   MOCK_JIRA_EXIT         — exit code to use when failing (default 1)
+#   MOCK_JIRA_COUNTER_FILE — path to a file used to track invocation count
+#
+# On each call, increments the counter, then either exits with MOCK_JIRA_EXIT
+# (if invocation count <= MOCK_JIRA_FAIL_TIMES) or prints MOCK_JIRA_STDOUT and exits 0.
+
+set -euo pipefail
+
+MOCK_JIRA_FAIL_TIMES="${MOCK_JIRA_FAIL_TIMES:-0}"
+MOCK_JIRA_STDOUT="${MOCK_JIRA_STDOUT:-}"
+MOCK_JIRA_EXIT="${MOCK_JIRA_EXIT:-1}"
+MOCK_JIRA_COUNTER_FILE="${MOCK_JIRA_COUNTER_FILE:-${TMPDIR:-/tmp}/mock_jira_counter_$$}"
+
+if [[ -f "$MOCK_JIRA_COUNTER_FILE" ]]; then
+  count=$(cat "$MOCK_JIRA_COUNTER_FILE")
+  count=$((count + 1))
+else
+  count=1
+fi
+printf '%s' "$count" > "$MOCK_JIRA_COUNTER_FILE"
+
+if (( count <= MOCK_JIRA_FAIL_TIMES )); then
+  exit "$MOCK_JIRA_EXIT"
+else
+  [[ -n "$MOCK_JIRA_STDOUT" ]] && printf '%s\n' "$MOCK_JIRA_STDOUT"
+  exit 0
+fi
