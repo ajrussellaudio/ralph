@@ -110,6 +110,7 @@ fi
 if [[ "$SUBCOMMAND" == "status" ]]; then
   FEATURE_LABEL=""
   FEATURE_BRANCH="main"
+  PARENT_TICKET=""
 
   for arg in "$@"; do
     if [[ "$arg" =~ ^--label=(.+)$ ]]; then
@@ -117,12 +118,22 @@ if [[ "$SUBCOMMAND" == "status" ]]; then
       FEATURE_BRANCH="feat/${BASH_REMATCH[1]}"
     elif [[ "$arg" =~ ^--ticket=([A-Z][A-Z0-9]*-[1-9][0-9]*)$ ]]; then
       # Stub-accept: JIRA backend wiring lands in a later slice.
-      :
+      PARENT_TICKET="${BASH_REMATCH[1]}"
+    elif [[ "$arg" =~ ^--ticket(=.*)?$ ]]; then
+      echo "Error: --ticket value must look like KEY-NUMBER (e.g. CAPP-123)."
+      echo "Usage: $(basename "$0") status [--label=<label>] [--ticket=<KEY-N>]"
+      exit 1
     else
       echo "Usage: $(basename "$0") status [--label=<label>] [--ticket=<KEY-N>]"
       exit 1
     fi
   done
+
+  # --ticket is mutually exclusive with --label (different task backends).
+  if [[ -n "$PARENT_TICKET" && -n "$FEATURE_LABEL" ]]; then
+    echo "Error: --ticket and --label are mutually exclusive (different task backends)."
+    exit 1
+  fi
 
   if [[ "${RALPH_PARSE_ONLY:-}" == "1" ]]; then
     echo "SUBCOMMAND=status"

@@ -33,6 +33,30 @@ RALPH="$REPO_ROOT/ralph.sh"
   echo "$output" | grep -qi "usage"
 }
 
+@test "status --ticket=<KEY-N>: exits 0" {
+  run env RALPH_PARSE_ONLY=1 "$RALPH" status --ticket=CAPP-123
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "SUBCOMMAND=status"
+}
+
+@test "status --label and --ticket together: exits non-zero with mutex error" {
+  run env RALPH_PARSE_ONLY=1 "$RALPH" status --label=foo --ticket=CAPP-123
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -qi "mutually exclusive"
+}
+
+@test "status --ticket with invalid value: exits non-zero" {
+  run env RALPH_PARSE_ONLY=1 "$RALPH" status --ticket=not-a-ticket
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -qi "usage\|KEY-NUMBER"
+}
+
+@test "status --ticket bare flag (no value): exits non-zero" {
+  run env RALPH_PARSE_ONLY=1 "$RALPH" status --ticket
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -qi "usage\|KEY-NUMBER"
+}
+
 @test "run subcommand: exits 0" {
   run env RALPH_PARSE_ONLY=1 "$RALPH" run
   [ "$status" -eq 0 ]
