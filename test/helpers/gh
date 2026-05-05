@@ -33,7 +33,7 @@ while [[ $# -gt 0 ]]; do
     --json)   JSON_FIELDS="$2"; shift 2 ;;
     --head)   HAS_HEAD="true";  shift 2 ;;
     -f)       shift 2 ;;
-    --repo|--base|--state|--label|--limit) shift 2 ;;
+    --repo|--base|--state|--label|--limit|--author) shift 2 ;;
     *)        POSITIONAL+=("$1"); shift ;;
   esac
 done
