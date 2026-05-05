@@ -183,3 +183,66 @@ setup() {
   [ -z "${MODE:-}" ]
   [ -z "${TASK_ID:-}" ]
 }
+
+# ─── Merge cycle (review backend = comments) ─────────────────────────────────
+
+@test "jira (comments): open Ralph PR + APPROVED → merge" {
+  export REVIEW_BACKEND="comments"
+  export MOCK_PR_LIST_RESPONSE='[{"number":42,"headRefName":"feat/capp-101-add-login"}]'
+  export MOCK_PR_VIEW_COMMENTS_RESPONSE='{"comments":[{"body":"<!-- RALPH-REVIEW: APPROVED -->","createdAt":"2024-01-01T00:00:00Z"}]}'
+
+  determine_mode
+
+  [ "$MODE" = "merge" ]
+  [ "$PR_NUMBER" = "42" ]
+}
+
+@test "jira (comments): CHANGES_REQUESTED with no commits since → fix" {
+  export REVIEW_BACKEND="comments"
+  export MOCK_PR_LIST_RESPONSE='[{"number":42,"headRefName":"feat/capp-101-add-login"}]'
+  export MOCK_PR_VIEW_COMMENTS_RESPONSE='{"comments":[{"body":"<!-- RALPH-REVIEW: REQUEST_CHANGES -->","createdAt":"2024-01-02T00:00:00Z"}]}'
+  export MOCK_PR_VIEW_COMMITS_RESPONSE='{"commits":[{"committedDate":"2024-01-01T00:00:00Z"}]}'
+
+  determine_mode
+
+  [ "$MODE" = "fix" ]
+  [ "$PR_NUMBER" = "42" ]
+}
+
+@test "jira (comments): CHANGES_REQUESTED with newer commit → review" {
+  export REVIEW_BACKEND="comments"
+  export MOCK_PR_LIST_RESPONSE='[{"number":42,"headRefName":"feat/capp-101-add-login"}]'
+  export MOCK_PR_VIEW_COMMENTS_RESPONSE='{"comments":[{"body":"<!-- RALPH-REVIEW: REQUEST_CHANGES -->","createdAt":"2024-01-01T00:00:00Z"}]}'
+  export MOCK_PR_VIEW_COMMITS_RESPONSE='{"commits":[{"committedDate":"2024-01-02T00:00:00Z"}]}'
+
+  determine_mode
+
+  [ "$MODE" = "review" ]
+  [ "$PR_NUMBER" = "42" ]
+}
+
+# ─── Merge cycle (review backend = copilot) ──────────────────────────────────
+
+@test "jira (copilot): open Ralph PR + APPROVED → merge" {
+  export REVIEW_BACKEND="copilot"
+  export MOCK_PR_LIST_RESPONSE='[{"number":42,"headRefName":"feat/capp-101-add-login"}]'
+  export MOCK_PR_VIEW_COMMENTS_RESPONSE='{"comments":[]}'
+  export MOCK_REVIEWS_RESPONSE='[{"user":{"login":"copilot-pull-request-reviewer[bot]"},"state":"APPROVED","submitted_at":"2024-01-02T00:00:00Z"}]'
+
+  determine_mode
+
+  [ "$MODE" = "merge" ]
+  [ "$PR_NUMBER" = "42" ]
+}
+
+@test "jira (copilot): CHANGES_REQUESTED with no fix-bot since → fix-bot" {
+  export REVIEW_BACKEND="copilot"
+  export MOCK_PR_LIST_RESPONSE='[{"number":42,"headRefName":"feat/capp-101-add-login"}]'
+  export MOCK_PR_VIEW_COMMENTS_RESPONSE='{"comments":[]}'
+  export MOCK_REVIEWS_RESPONSE='[{"user":{"login":"copilot-pull-request-reviewer[bot]"},"state":"CHANGES_REQUESTED","submitted_at":"2024-01-02T00:00:00Z"}]'
+
+  determine_mode
+
+  [ "$MODE" = "fix-bot" ]
+  [ "$PR_NUMBER" = "42" ]
+}
