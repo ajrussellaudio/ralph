@@ -48,7 +48,7 @@ determine_mode() {
   if [[ "${TASK_BACKEND:-github}" == "jira" ]]; then
     local _proj_lower
     _proj_lower=$(printf '%s' "${PROJECT_KEY:-}" | tr '[:upper:]' '[:lower:]')
-    _pr_head_filter='[.[] | select(.headRefName | test("^(feat|fix|refactor)/'"$_proj_lower"'-"))] | sort_by(.number)'
+    _pr_head_filter='[.[] | select(.headRefName | test("^(feat|fix|refactor)/'"$_proj_lower"'-"; "i"))] | sort_by(.number)'
   else
     _pr_head_filter='[.[] | select(.headRefName | startswith("ralph/issue-"))] | sort_by(.number)'
   fi

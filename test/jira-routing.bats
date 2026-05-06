@@ -143,6 +143,17 @@ setup() {
   [ -z "${PR_NUMBER:-}" ]
 }
 
+@test "jira: PR list filter is case-insensitive on project key (uppercase branch matches)" {
+  # Agent-created branches sometimes use the original ticket case (CAPP-...).
+  # The filter must still match these.
+  export MOCK_PR_LIST_RESPONSE='[{"number":451,"headRefName":"feat/CAPP-910-anchor-validator"}]'
+  export MOCK_PR_VIEW_COMMENTS_RESPONSE='{"comments":[]}'
+
+  determine_mode
+
+  [ "$PR_NUMBER" = "451" ]
+}
+
 # ─── Priority ordering ───────────────────────────────────────────────────────
 
 @test "jira: highest priority subtask wins across mixed priorities" {
