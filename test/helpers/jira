@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Mock jira-cli for bats tests.
+#
+# Routes calls based on the first positional argument and reads response data
+# from MOCK_JIRA_* environment variables:
+#
+#   MOCK_JIRA_AUTH_EXIT              Non-zero to simulate unauthenticated `jira me` (default 0)
+#   MOCK_JIRA_ISSUE_LIST_RESPONSE    Stdout for: jira issue list (TSV: key<TAB>type<TAB>summary[<TAB>priority])
+#   MOCK_JIRA_BLOCKERS_<KEY>         Stdout for: jira issue list with a "linkedIssues(KEY,'is blocked by')"
+#                                    JQL where KEY matches. <KEY> is the ticket key with '-' replaced by '_'
+#                                    (e.g. CAPP-101 → MOCK_JIRA_BLOCKERS_CAPP_101). Each line: blocker key.
+#                                    Empty/unset → no blockers.
+#   MOCK_JIRA_ISSUE_VIEW_RESPONSE    Stdout for: jira issue view <KEY> (typically the summary)
+#   MOCK_JIRA_ISSUE_VIEW_EXIT        Non-zero to simulate a missing/invalid ticket
+#   MOCK_JIRA_TRANSITION_LOG         File path; when set, each `issue move` invocation appends
+#                                    "<KEY> <STATE>" to that file (lets tests assert transitions)
+
+CMD="${1:-}"
+SUBCMD="${2:-}"
+
+case "$CMD" in
+  me)
+    exit "${MOCK_JIRA_AUTH_EXIT:-0}"
+    ;;
+  issue)
+    case "$SUBCMD" in
+      list)
+        shift 2
+        jql=""
+        while [[ $# -gt 0 ]]; do
+          if [[ "$1" == "--jql" ]]; then
+            jql="${2:-}"
+            shift 2 || shift
+          else
+            shift
+          fi
+        done
+        if [[ "$jql" == *"linkedIssues("*"is blocked by"* ]]; then
+          # Extract first quoted argument inside linkedIssues(...) → the ticket key.
+          key=$(printf '%s' "$jql" \
+            | sed -E 's/.*linkedIssues\(([^)]*)\).*/\1/' \
+            | sed -E 's/^[[:space:]]*"([^"]+)".*/\1/')
+          # Convert dashes to underscores for env var name compatibility.
+          var="MOCK_JIRA_BLOCKERS_${key//-/_}"
+          val="${!var:-}"
+          printf '%s' "$val"
+          [[ -n "$val" ]] && printf '\n'
+          exit 0
+        fi
+        printf '%s' "${MOCK_JIRA_ISSUE_LIST_RESPONSE:-}"
+        [[ -n "${MOCK_JIRA_ISSUE_LIST_RESPONSE:-}" ]] && printf '\n'
+        exit 0
+        ;;
+      view)
+        if [[ "${MOCK_JIRA_ISSUE_VIEW_EXIT:-0}" != "0" ]]; then
+          exit "${MOCK_JIRA_ISSUE_VIEW_EXIT}"
+        fi
+        printf '%s' "${MOCK_JIRA_ISSUE_VIEW_RESPONSE:-}"
+        [[ -n "${MOCK_JIRA_ISSUE_VIEW_RESPONSE:-}" ]] && printf '\n'
+        exit 0
+        ;;
+      move)
+        if [[ -n "${MOCK_JIRA_TRANSITION_LOG:-}" ]]; then
+          # Args after `issue move` are: <KEY> <STATE...>
+          shift 2
+          printf '%s\n' "$*" >> "$MOCK_JIRA_TRANSITION_LOG"
+        fi
+        exit 0
+        ;;
+    esac
+    ;;
+esac
+
+# Default: behave like a present, working binary for any other invocation.
+exit 0

@@ -41,10 +41,23 @@ determine_mode() {
   fi
 
   echo "  🔍 Checking for open ralph PRs in ${REPO}…"
+
+  # PR head-branch filter: GitHub backend matches `ralph/issue-*`; JIRA backend
+  # matches feat|fix|refactor branches whose ticket key starts with PROJECT_KEY.
+  local _pr_head_filter
+  if [[ "${TASK_BACKEND:-github}" == "jira" ]]; then
+    local _proj_lower
+    _proj_lower=$(printf '%s' "${PROJECT_KEY:-}" | tr '[:upper:]' '[:lower:]')
+    _pr_head_filter='[.[] | select(.headRefName | test("^(feat|fix|refactor)/'"$_proj_lower"'-"))] | sort_by(.number)'
+  else
+    _pr_head_filter='[.[] | select(.headRefName | startswith("ralph/issue-"))] | sort_by(.number)'
+  fi
+
   OPEN_RALPH_PRS=$(gh_with_retry pr list --repo "$REPO" --state open \
     --base "$FEATURE_BRANCH" \
+    --author "@me" \
     --json number,headRefName \
-    --jq '[.[] | select(.headRefName | startswith("ralph/issue-"))] | sort_by(.number)' \
+    --jq "$_pr_head_filter" \
     < /dev/null 2>/dev/null || echo "[]")
 
   PR_COUNT=$(echo "$OPEN_RALPH_PRS" | jq length)
@@ -127,6 +140,54 @@ determine_mode() {
 
     echo "  ▶  Mode: $MODE  (PR #$PR_NUMBER)"
   else
+    if [[ "${TASK_BACKEND:-github}" == "jira" ]]; then
+      echo "  🎫 No open ralph PRs — checking JIRA subtasks of ${PARENT_TICKET}…"
+
+      local _subtasks _filtered _first_line
+      _subtasks=$(jira_open_subtasks "$PARENT_TICKET" 2>/dev/null || echo "")
+      _filtered=$(printf '%s\n' "$_subtasks" | sed '/^[[:space:]]*$/d' | jira_filter_unblocked)
+      _first_line=$(printf '%s\n' "$_filtered" | sed '/^[[:space:]]*$/d' | jira_pick_next)
+
+      if [[ -n "$_first_line" ]]; then
+        TASK_ID=$(printf '%s' "$_first_line" | awk -F '\t' '{print $1}')
+        TASK_TYPE=$(printf '%s' "$_first_line" | awk -F '\t' '{print $2}')
+        TASK_SUMMARY=$(printf '%s' "$_first_line" | awk -F '\t' '{print $3}')
+        MODE="implement"
+        export TASK_ID TASK_TYPE TASK_SUMMARY
+        echo "  ▶  Mode: $MODE  (Ticket $TASK_ID)"
+      elif [[ -n "$(printf '%s\n' "$_subtasks" | sed '/^[[:space:]]*$/d')" ]]; then
+        # Open subtasks exist but they're all blocked — don't open feat→main PR.
+        echo "  ▶  No unblocked subtasks for $PARENT_TICKET (all blocked)"
+        MODE=""
+      else
+        echo "  ▶  No open subtasks remain for $PARENT_TICKET — checking feat→main PR…"
+
+        # All subtasks Done — check for an existing feat→main PR.
+        # Uses the REST API because gh pr list --head OWNER:BRANCH is unreliable
+        # for cross-fork PRs.
+        FEATURE_PR_JSON=$(gh_with_retry api "/repos/${UPSTREAM_REPO}/pulls" \
+          -f state=open \
+          -f base=main \
+          -f "head=${FORK_OWNER}:${FEATURE_BRANCH}" \
+          --jq '.[0] // empty | {number, isDraft: .draft}' \
+          < /dev/null 2>/dev/null || echo "")
+
+        if [[ -z "$FEATURE_PR_JSON" ]]; then
+          MODE="feature-pr"
+          FEATURE_PR_NUMBER=""
+          echo "  ▶  Mode: $MODE  (all subtasks Done, opening feat→main PR)"
+        elif [[ "$(echo "$FEATURE_PR_JSON" | jq -r '.isDraft')" == "true" ]]; then
+          MODE="feature-pr"
+          FEATURE_PR_NUMBER=$(echo "$FEATURE_PR_JSON" | jq -r '.number')
+          echo "  ▶  Mode: $MODE  (draft feat→main PR #${FEATURE_PR_NUMBER} found — promoting to ready)"
+        else
+          MODE="complete"
+          echo "  ▶  Mode: $MODE  (feat→main PR already open)"
+        fi
+      fi
+      return 0
+    fi
+
     echo "  🔍 No open ralph PRs — checking issues…"
 
     if [[ -n "${PINNED_ISSUE:-}" ]]; then

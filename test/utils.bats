@@ -196,3 +196,253 @@ STUB
   [[ "$stderr" == *"gh native error"* ]]
   [ "$(echo "$stderr" | grep -c 'gh native error')" -eq 3 ]
 }
+
+# ─── jira_branch_prefix ───────────────────────────────────────────────────────
+
+@test "jira_branch_prefix: Bug → fix" {
+  [ "$(jira_branch_prefix Bug)" = "fix" ]
+}
+
+@test "jira_branch_prefix: Improvement → refactor" {
+  [ "$(jira_branch_prefix Improvement)" = "refactor" ]
+}
+
+@test "jira_branch_prefix: Task → feat" {
+  [ "$(jira_branch_prefix Task)" = "feat" ]
+}
+
+@test "jira_branch_prefix: Sub-task → feat" {
+  [ "$(jira_branch_prefix "Sub-task")" = "feat" ]
+}
+
+@test "jira_branch_prefix: Story → feat" {
+  [ "$(jira_branch_prefix Story)" = "feat" ]
+}
+
+@test "jira_branch_prefix: Spike → feat" {
+  [ "$(jira_branch_prefix Spike)" = "feat" ]
+}
+
+@test "jira_branch_prefix: Epic → feat" {
+  [ "$(jira_branch_prefix Epic)" = "feat" ]
+}
+
+@test "jira_branch_prefix: unknown type → feat" {
+  [ "$(jira_branch_prefix "Some Future Type")" = "feat" ]
+}
+
+@test "jira_branch_prefix: empty → feat" {
+  [ "$(jira_branch_prefix "")" = "feat" ]
+}
+
+# ─── jira_kebab_summary ───────────────────────────────────────────────────────
+
+@test "jira_kebab_summary: simple title → kebab-case" {
+  [ "$(jira_kebab_summary "Add login button")" = "add-login-button" ]
+}
+
+@test "jira_kebab_summary: lowercases all letters" {
+  [ "$(jira_kebab_summary "FOO Bar BAZ")" = "foo-bar-baz" ]
+}
+
+@test "jira_kebab_summary: strips special characters" {
+  [ "$(jira_kebab_summary "Fix: don't crash on @user!")" = "fix-don-t-crash-on-user" ]
+}
+
+@test "jira_kebab_summary: collapses runs of separators" {
+  [ "$(jira_kebab_summary "foo   ___   bar")" = "foo-bar" ]
+}
+
+@test "jira_kebab_summary: trims leading/trailing dashes" {
+  [ "$(jira_kebab_summary "   hello world   ")" = "hello-world" ]
+}
+
+@test "jira_kebab_summary: empty input → empty output" {
+  [ "$(jira_kebab_summary "")" = "" ]
+}
+
+@test "jira_kebab_summary: only-special-chars → empty" {
+  [ "$(jira_kebab_summary "!@#\$%^&*()")" = "" ]
+}
+
+@test "jira_kebab_summary: truncates very long summaries" {
+  long_summary="this is a very long summary that should definitely be truncated to a reasonable length for branches"
+  out=$(jira_kebab_summary "$long_summary")
+  [ "${#out}" -le 50 ]
+  # Should not end with a dash after truncation
+  [[ "$out" != *- ]]
+}
+
+# ─── jira_feature_branch ──────────────────────────────────────────────────────
+
+@test "jira_feature_branch: composes feat/<key>-<slug> from key+summary" {
+  [ "$(jira_feature_branch CAPP-123 "Add login button")" = "feat/capp-123-add-login-button" ]
+}
+
+@test "jira_feature_branch: empty summary → feat/<key> only" {
+  [ "$(jira_feature_branch CAPP-123 "")" = "feat/capp-123" ]
+}
+
+@test "jira_feature_branch: lowercases the project key" {
+  [ "$(jira_feature_branch ABC-9 "Hello World")" = "feat/abc-9-hello-world" ]
+}
+
+# ─── jira_with_retry ──────────────────────────────────────────────────────────
+
+@test "jira_with_retry: first attempt succeeds → exit 0, jira called once" {
+  cp "$REPO_ROOT/test/helpers/mock_jira" "$BATS_TEST_TMPDIR/mock-bin/jira"
+  chmod +x "$BATS_TEST_TMPDIR/mock-bin/jira"
+  export MOCK_JIRA_COUNTER_FILE="$BATS_TEST_TMPDIR/jira_counter"
+  export MOCK_JIRA_FAIL_TIMES=0
+  export MOCK_JIRA_STDOUT="ok"
+
+  run jira_with_retry me
+  [ "$status" -eq 0 ]
+  [ "$output" = "ok" ]
+  [ "$(cat "$MOCK_JIRA_COUNTER_FILE")" -eq 1 ]
+}
+
+@test "jira_with_retry: fails twice then succeeds → exit 0, called 3 times" {
+  cp "$REPO_ROOT/test/helpers/mock_jira" "$BATS_TEST_TMPDIR/mock-bin/jira"
+  chmod +x "$BATS_TEST_TMPDIR/mock-bin/jira"
+  export MOCK_JIRA_COUNTER_FILE="$BATS_TEST_TMPDIR/jira_counter"
+  export MOCK_JIRA_FAIL_TIMES=2
+  export MOCK_JIRA_EXIT=1
+  export MOCK_JIRA_STDOUT="recovered"
+
+  run jira_with_retry issue list
+  [ "$status" -eq 0 ]
+  [ "$(cat "$MOCK_JIRA_COUNTER_FILE")" -eq 3 ]
+}
+
+@test "jira_with_retry: all 3 attempts fail → non-zero exit, called 3 times" {
+  cp "$REPO_ROOT/test/helpers/mock_jira" "$BATS_TEST_TMPDIR/mock-bin/jira"
+  chmod +x "$BATS_TEST_TMPDIR/mock-bin/jira"
+  export MOCK_JIRA_COUNTER_FILE="$BATS_TEST_TMPDIR/jira_counter"
+  export MOCK_JIRA_FAIL_TIMES=99
+  export MOCK_JIRA_EXIT=2
+
+  run jira_with_retry issue list
+  [ "$status" -eq 2 ]
+  [ "$(cat "$MOCK_JIRA_COUNTER_FILE")" -eq 3 ]
+}
+
+# ─── jira_priority_rank ───────────────────────────────────────────────────────
+
+@test "jira_priority_rank: Highest → 1" {
+  [ "$(jira_priority_rank Highest)" = "1" ]
+}
+
+@test "jira_priority_rank: High → 2" {
+  [ "$(jira_priority_rank High)" = "2" ]
+}
+
+@test "jira_priority_rank: Medium → 3" {
+  [ "$(jira_priority_rank Medium)" = "3" ]
+}
+
+@test "jira_priority_rank: Low → 4" {
+  [ "$(jira_priority_rank Low)" = "4" ]
+}
+
+@test "jira_priority_rank: Lowest → 5" {
+  [ "$(jira_priority_rank Lowest)" = "5" ]
+}
+
+@test "jira_priority_rank: empty → 6" {
+  [ "$(jira_priority_rank "")" = "6" ]
+}
+
+@test "jira_priority_rank: unknown → 6" {
+  [ "$(jira_priority_rank "Wibble")" = "6" ]
+}
+
+# ─── jira_pick_next ───────────────────────────────────────────────────────────
+
+@test "jira_pick_next: empty input → empty output" {
+  out=$(printf '' | jira_pick_next)
+  [ -z "$out" ]
+}
+
+@test "jira_pick_next: single row → that row" {
+  input=$'CAPP-101\tTask\tHello\tMedium'
+  out=$(printf '%s\n' "$input" | jira_pick_next)
+  [ "$out" = "$input" ]
+}
+
+@test "jira_pick_next: orders by priority desc — Highest beats Low and Medium" {
+  input=$'CAPP-201\tTask\tLow one\tLow\nCAPP-202\tTask\tHighest one\tHighest\nCAPP-203\tTask\tMedium one\tMedium'
+  out=$(printf '%s\n' "$input" | jira_pick_next)
+  key=$(printf '%s' "$out" | awk -F '\t' '{print $1}')
+  [ "$key" = "CAPP-202" ]
+}
+
+@test "jira_pick_next: tie-breaks ascending by ticket key within same priority" {
+  input=$'CAPP-303\tTask\tThree\tHigh\nCAPP-301\tTask\tOne\tHigh\nCAPP-302\tTask\tTwo\tHigh'
+  out=$(printf '%s\n' "$input" | jira_pick_next)
+  key=$(printf '%s' "$out" | awk -F '\t' '{print $1}')
+  [ "$key" = "CAPP-301" ]
+}
+
+@test "jira_pick_next: missing priority column → ranks lowest, key tie-break" {
+  # Three-column rows (no priority) should all rank as 6, so lowest key wins.
+  input=$'CAPP-105\tTask\tFive\nCAPP-101\tTask\tOne\nCAPP-103\tTask\tThree'
+  out=$(printf '%s\n' "$input" | jira_pick_next)
+  key=$(printf '%s' "$out" | awk -F '\t' '{print $1}')
+  [ "$key" = "CAPP-101" ]
+}
+
+@test "jira_pick_next: ignores blank lines" {
+  input=$'\nCAPP-101\tTask\tHello\tMedium\n\n'
+  out=$(printf '%s' "$input" | jira_pick_next)
+  key=$(printf '%s' "$out" | awk -F '\t' '{print $1}')
+  [ "$key" = "CAPP-101" ]
+}
+
+# ─── jira_filter_unblocked ────────────────────────────────────────────────────
+
+@test "jira_filter_unblocked: no blockers configured → all rows pass through" {
+  cp "$REPO_ROOT/test/helpers/jira" "$BATS_TEST_TMPDIR/mock-bin/jira"
+  chmod +x "$BATS_TEST_TMPDIR/mock-bin/jira"
+
+  input=$'CAPP-101\tTask\tOne\tMedium\nCAPP-102\tTask\tTwo\tHigh'
+  out=$(printf '%s\n' "$input" | jira_filter_unblocked)
+  [ "$out" = "$input" ]
+}
+
+@test "jira_filter_unblocked: row with non-Done blocker is dropped" {
+  cp "$REPO_ROOT/test/helpers/jira" "$BATS_TEST_TMPDIR/mock-bin/jira"
+  chmod +x "$BATS_TEST_TMPDIR/mock-bin/jira"
+
+  # CAPP-101 is blocked by CAPP-999 (open). CAPP-102 has no blockers.
+  export MOCK_JIRA_BLOCKERS_CAPP_101="CAPP-999"
+
+  input=$'CAPP-101\tTask\tOne\tMedium\nCAPP-102\tTask\tTwo\tHigh'
+  out=$(printf '%s\n' "$input" | jira_filter_unblocked)
+  echo "$out" | grep -qv "CAPP-101"
+  echo "$out" | grep -q "CAPP-102"
+}
+
+@test "jira_filter_unblocked: empty blocker response means unblocked" {
+  cp "$REPO_ROOT/test/helpers/jira" "$BATS_TEST_TMPDIR/mock-bin/jira"
+  chmod +x "$BATS_TEST_TMPDIR/mock-bin/jira"
+
+  # Explicitly empty — JQL filter (statusCategory != Done) returned nothing.
+  export MOCK_JIRA_BLOCKERS_CAPP_101=""
+
+  input=$'CAPP-101\tTask\tOne\tMedium'
+  out=$(printf '%s\n' "$input" | jira_filter_unblocked)
+  [ "$out" = "$input" ]
+}
+
+@test "jira_filter_unblocked: all rows blocked → empty output" {
+  cp "$REPO_ROOT/test/helpers/jira" "$BATS_TEST_TMPDIR/mock-bin/jira"
+  chmod +x "$BATS_TEST_TMPDIR/mock-bin/jira"
+
+  export MOCK_JIRA_BLOCKERS_CAPP_101="CAPP-999"
+  export MOCK_JIRA_BLOCKERS_CAPP_102="CAPP-998"
+
+  input=$'CAPP-101\tTask\tOne\tMedium\nCAPP-102\tTask\tTwo\tHigh'
+  out=$(printf '%s\n' "$input" | jira_filter_unblocked | sed '/^[[:space:]]*$/d')
+  [ -z "$out" ]
+}

@@ -33,7 +33,7 @@ while [[ $# -gt 0 ]]; do
     --json)   JSON_FIELDS="$2"; shift 2 ;;
     --head)   HAS_HEAD="true";  shift 2 ;;
     -f)       shift 2 ;;
-    --repo|--base|--state|--label|--limit) shift 2 ;;
+    --repo|--base|--state|--label|--limit|--author) shift 2 ;;
     *)        POSITIONAL+=("$1"); shift ;;
   esac
 done
@@ -99,6 +99,15 @@ case "$CMD" in
       view)
         if [[ "$JSON_FIELDS" == "commits" ]]; then
           apply_jq "$MOCK_PR_VIEW_COMMITS_RESPONSE"
+        elif [[ "$JSON_FIELDS" == "state" ]]; then
+          _default_pr_state='{"state":"OPEN"}'
+          apply_jq "${MOCK_PR_VIEW_STATE_RESPONSE:-$_default_pr_state}"
+        elif [[ "$JSON_FIELDS" == "headRefName" ]]; then
+          _default_pr_head='{"headRefName":""}'
+          apply_jq "${MOCK_PR_VIEW_HEADREF_RESPONSE:-$_default_pr_head}"
+        elif [[ "$JSON_FIELDS" == "closingIssuesReferences" ]]; then
+          _default_closing='{"closingIssuesReferences":[]}'
+          apply_jq "${MOCK_PR_VIEW_CLOSING_RESPONSE:-$_default_closing}"
         else
           apply_jq "$MOCK_PR_VIEW_COMMENTS_RESPONSE"
         fi

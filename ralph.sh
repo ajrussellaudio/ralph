@@ -110,16 +110,30 @@ fi
 if [[ "$SUBCOMMAND" == "status" ]]; then
   FEATURE_LABEL=""
   FEATURE_BRANCH="main"
+  PARENT_TICKET=""
 
   for arg in "$@"; do
     if [[ "$arg" =~ ^--label=(.+)$ ]]; then
       FEATURE_LABEL="prd/${BASH_REMATCH[1]}"
       FEATURE_BRANCH="feat/${BASH_REMATCH[1]}"
+    elif [[ "$arg" =~ ^--ticket=([A-Z][A-Z0-9]*-[1-9][0-9]*)$ ]]; then
+      # Stub-accept: JIRA backend wiring lands in a later slice.
+      PARENT_TICKET="${BASH_REMATCH[1]}"
+    elif [[ "$arg" =~ ^--ticket(=.*)?$ ]]; then
+      echo "Error: --ticket value must look like KEY-NUMBER (e.g. CAPP-123)."
+      echo "Usage: $(basename "$0") status [--label=<label>] [--ticket=<KEY-N>]"
+      exit 1
     else
-      echo "Usage: $(basename "$0") status [--label=<label>]"
+      echo "Usage: $(basename "$0") status [--label=<label>] [--ticket=<KEY-N>]"
       exit 1
     fi
   done
+
+  # --ticket is mutually exclusive with --label (different task backends).
+  if [[ -n "$PARENT_TICKET" && -n "$FEATURE_LABEL" ]]; then
+    echo "Error: --ticket and --label are mutually exclusive (different task backends)."
+    exit 1
+  fi
 
   if [[ "${RALPH_PARSE_ONLY:-}" == "1" ]]; then
     echo "SUBCOMMAND=status"
@@ -164,7 +178,7 @@ fi
 # ── Argument validation (run subcommand) ───────────────────────────────────────
 
 usage() {
-  echo "Usage: $(basename "$0") run [--max-iterations=N] [--label=<label>] [--issue=<N>]"
+  echo "Usage: $(basename "$0") run [--max-iterations=N] [--label=<label>] [--issue=<N>] [--ticket=<KEY-N>]"
   echo ""
   echo "  --max-iterations=N  Optional positive integer — how many Copilot iterations"
   echo "                      to allow before giving up. When omitted, Ralph runs"
@@ -179,17 +193,25 @@ usage() {
   echo "                      issue is merged, Ralph exits cleanly without opening a"
   echo "                      feature PR."
   echo ""
+  echo "  --ticket=<KEY-N>    Optional JIRA ticket reference (e.g. CAPP-123). Switches"
+  echo "                      Ralph's task backend to JIRA. Mutually exclusive with"
+  echo "                      --label and --issue."
+  echo ""
   echo "Examples:"
   echo "  $(basename "$0") run"
   echo "  $(basename "$0") run --label=foo-widget"
   echo "  $(basename "$0") run --max-iterations=20 --label=foo-widget"
   echo "  $(basename "$0") run --max-iterations=20 --issue=82 --label=foo-widget"
+  echo "  $(basename "$0") run --ticket=CAPP-123"
 }
 
 MAX_ITERATIONS=""
 FEATURE_LABEL=""
 FEATURE_BRANCH="main"
 PINNED_ISSUE=""
+PARENT_TICKET=""
+PROJECT_KEY=""
+TASK_BACKEND="github"
 
 for arg in "$@"; do
   if [[ "$arg" =~ ^[1-9][0-9]*$ ]]; then
@@ -205,11 +227,31 @@ for arg in "$@"; do
     FEATURE_BRANCH="feat/${BASH_REMATCH[1]}"
   elif [[ "$arg" =~ ^--issue=([1-9][0-9]*)$ ]]; then
     PINNED_ISSUE="${BASH_REMATCH[1]}"
+  elif [[ "$arg" =~ ^--ticket=([A-Z][A-Z0-9]*-[1-9][0-9]*)$ ]]; then
+    PARENT_TICKET="${BASH_REMATCH[1]}"
+    PROJECT_KEY="${PARENT_TICKET%%-*}"
+    TASK_BACKEND="jira"
+  elif [[ "$arg" =~ ^--ticket(=.*)?$ ]]; then
+    echo "Error: --ticket value must look like KEY-NUMBER (e.g. CAPP-123)."
+    usage
+    exit 1
   else
     usage
     exit 1
   fi
 done
+
+# --ticket is mutually exclusive with --label and --issue (different task backends).
+if [[ -n "$PARENT_TICKET" ]]; then
+  if [[ -n "$FEATURE_LABEL" ]]; then
+    echo "Error: --ticket and --label are mutually exclusive (different task backends)."
+    exit 1
+  fi
+  if [[ -n "$PINNED_ISSUE" ]]; then
+    echo "Error: --ticket and --issue are mutually exclusive (different task backends)."
+    exit 1
+  fi
+fi
 
 # Test hook: exit 0 after successful arg parsing so bats tests can verify
 # arg handling without requiring a full preflight environment.
@@ -217,12 +259,24 @@ if [[ "${RALPH_PARSE_ONLY:-}" == "1" ]]; then
   echo "MAX_ITERATIONS=${MAX_ITERATIONS}"
   echo "FEATURE_BRANCH=${FEATURE_BRANCH}"
   echo "PINNED_ISSUE=${PINNED_ISSUE}"
+  echo "PARENT_TICKET=${PARENT_TICKET}"
+  echo "PROJECT_KEY=${PROJECT_KEY}"
+  echo "TASK_BACKEND=${TASK_BACKEND}"
   exit 0
 fi
 
-# Derive the worktree path. Include the PRD slug when --label is set so
-# multiple ralph runs can coexist in parallel on the same machine.
-if [[ -n "$FEATURE_LABEL" ]]; then
+export TASK_BACKEND PARENT_TICKET PROJECT_KEY
+
+# In JIRA mode, derive the feature branch from the parent ticket.
+if [[ "$TASK_BACKEND" == "jira" ]]; then
+  FEATURE_BRANCH=$(jira_feature_branch "$PARENT_TICKET")
+fi
+
+# Derive the worktree path. Include a unique slug when running against a
+# feature branch so multiple ralph runs can coexist in parallel on the same machine.
+if [[ "$TASK_BACKEND" == "jira" ]]; then
+  WORKTREE_DIR="${GIT_ROOT%/*}/$(basename "$GIT_ROOT")-ralph-$(printf '%s' "$PARENT_TICKET" | tr '[:upper:]' '[:lower:]')"
+elif [[ -n "$FEATURE_LABEL" ]]; then
   WORKTREE_DIR="${GIT_ROOT%/*}/$(basename "$GIT_ROOT")-ralph-${FEATURE_BRANCH#feat/}"
 else
   WORKTREE_DIR="${GIT_ROOT%/*}/$(basename "$GIT_ROOT")-ralph-workspace"
@@ -253,6 +307,20 @@ if [[ -n "$FEATURE_LABEL" && -z "$PINNED_ISSUE" ]]; then
     fi
   else
     echo "Warning: Could not reach GitHub API; skipping PRD preflight check."
+  fi
+fi
+
+# In JIRA mode, validate the parent ticket exists OR the feature branch is
+# already on origin. A typo'd ticket key fails fast here with a clear error.
+if [[ "$TASK_BACKEND" == "jira" ]]; then
+  if jira_with_retry issue view "$PARENT_TICKET" --plain --no-headers --columns key < /dev/null > /dev/null 2>&1; then
+    : # parent ticket exists
+  elif git -C "$GIT_ROOT" ls-remote --exit-code --heads origin "$FEATURE_BRANCH" > /dev/null 2>&1; then
+    echo "  ℹ  JIRA ticket ${PARENT_TICKET} not reachable, but feature branch origin/${FEATURE_BRANCH} exists — continuing."
+  else
+    echo "Error: JIRA ticket '${PARENT_TICKET}' not found, and branch 'origin/${FEATURE_BRANCH}' does not exist."
+    echo "Check that --ticket matches an existing JIRA issue key."
+    exit 1
   fi
 fi
 
@@ -317,9 +385,13 @@ source "$SCRIPT_DIR/lib/routing.sh"
 
 # Loads the mode file and substitutes {{REPO}}, {{PR_NUMBER}}, {{ISSUE_NUMBER}}.
 build_prompt() {
-  local mode_file="$MODES_DIR/$MODE.md"
-  if [[ ! -f "$mode_file" ]]; then
-    echo "  ❌  Mode file not found: $mode_file"
+  local mode_file=""
+  if [[ "${TASK_BACKEND:-github}" == "jira" && -f "$MODES_DIR/jira/$MODE.md" ]]; then
+    mode_file="$MODES_DIR/jira/$MODE.md"
+  elif [[ -f "$MODES_DIR/$MODE.md" ]]; then
+    mode_file="$MODES_DIR/$MODE.md"
+  else
+    echo "  ❌  Mode file not found: $MODES_DIR/$MODE.md"
     exit 1
   fi
 
@@ -338,6 +410,13 @@ build_prompt() {
     feature_pr_section="No existing PR. You will create a new one in Step 2."
   fi
 
+  # Derive JIRA-specific placeholders from TASK_TYPE/TASK_SUMMARY when available.
+  local task_slug="" branch_prefix=""
+  if [[ "${TASK_BACKEND:-github}" == "jira" ]]; then
+    task_slug=$(jira_kebab_summary "${TASK_SUMMARY:-}")
+    branch_prefix=$(jira_branch_prefix "${TASK_TYPE:-}")
+  fi
+
   PROMPT=$(cat "$mode_file")
   PROMPT="${PROMPT//\{\{REPO\}\}/$REPO}"
   PROMPT="${PROMPT//\{\{PR_NUMBER\}\}/$PR_NUMBER}"
@@ -352,84 +431,18 @@ build_prompt() {
   PROMPT="${PROMPT//\{\{FORK_OWNER\}\}/$FORK_OWNER}"
   PROMPT="${PROMPT//\{\{FEATURE_PR_NUMBER\}\}/${FEATURE_PR_NUMBER:-}}"
   PROMPT="${PROMPT//\{\{FEATURE_PR_SECTION\}\}/$feature_pr_section}"
+  PROMPT="${PROMPT//\{\{TASK_BACKEND\}\}/${TASK_BACKEND:-github}}"
+  PROMPT="${PROMPT//\{\{PARENT_TICKET\}\}/${PARENT_TICKET:-}}"
+  PROMPT="${PROMPT//\{\{PROJECT_KEY\}\}/${PROJECT_KEY:-}}"
+  PROMPT="${PROMPT//\{\{TASK_ID\}\}/${TASK_ID:-}}"
+  PROMPT="${PROMPT//\{\{TASK_SLUG\}\}/$task_slug}"
+  PROMPT="${PROMPT//\{\{BRANCH_PREFIX\}\}/$branch_prefix}"
 }
 
 # ── Post-merge bookkeeping ────────────────────────────────────────────────────
 
-# Closes issues linked to a merged PR and removes the `blocked` label from any
-# issue whose blockers are now all closed.  Runs after a merge-mode iteration.
-post_merge_cleanup() {
-  local pr_number="$1"
-
-  local pr_state
-  pr_state=$(gh_with_retry pr view "$pr_number" --repo "$REPO" \
-    --json state --jq '.state' < /dev/null 2>/dev/null || echo "")
-  [[ "$pr_state" == "MERGED" ]] || return 0
-
-  local closed_issues
-  closed_issues=$(gh_with_retry pr view "$pr_number" --repo "$REPO" \
-    --json closingIssuesReferences \
-    --jq '.closingIssuesReferences[].number' \
-    < /dev/null 2>/dev/null || echo "")
-
-  # closingIssuesReferences is only populated by GitHub when the PR targets the
-  # default branch.  In PRD mode the PR targets feat/<label>, so fall back to
-  # parsing the issue number directly from the branch name (ralph/issue-<N>).
-  if [[ -z "$closed_issues" ]]; then
-    local head_ref
-    head_ref=$(gh_with_retry pr view "$pr_number" --repo "$REPO" \
-      --json headRefName --jq '.headRefName' \
-      < /dev/null 2>/dev/null || echo "")
-    if [[ "$head_ref" =~ ^ralph/issue-([0-9]+)$ ]]; then
-      closed_issues="${BASH_REMATCH[1]}"
-    fi
-  fi
-
-  for issue_num in $closed_issues; do
-    gh_with_retry issue close "$issue_num" --repo "$REPO" < /dev/null 2>/dev/null || true
-    echo "  ✅  Closed issue #${issue_num}"
-  done
-
-  [[ -n "$closed_issues" ]] || return 0
-
-  local blocked_json
-  blocked_json=$(gh_with_retry issue list --repo "$REPO" --label blocked \
-    --json number,body --limit 100 \
-    < /dev/null 2>/dev/null || echo "[]")
-
-  local unblock_script
-  unblock_script=$(mktemp)
-  cat > "$unblock_script" << 'EOF'
-import sys, json, subprocess, re
-
-repo        = sys.argv[1]
-just_closed = {int(x) for x in sys.argv[2:]}
-issues      = json.load(sys.stdin)
-
-for issue in issues:
-    body     = issue.get("body") or ""
-    blockers = {int(m) for m in re.findall(r'[Bb]locked by #(\d+)', body)}
-    if not blockers & just_closed:
-        continue
-    all_done = all(
-        b in just_closed or subprocess.run(
-            ["gh", "issue", "view", str(b), "--repo", repo,
-             "--json", "state", "--jq", ".state"],
-            capture_output=True, text=True, stdin=subprocess.DEVNULL
-        ).stdout.strip() == "CLOSED"
-        for b in blockers
-    )
-    if all_done:
-        subprocess.run(
-            ["gh", "issue", "edit", str(issue["number"]),
-             "--repo", repo, "--remove-label", "blocked"],
-            stdin=subprocess.DEVNULL
-        )
-        print(f"  🔓  Unblocked issue #{issue['number']}")
-EOF
-  echo "$blocked_json" | python3 "$unblock_script" "$REPO" $closed_issues
-  rm -f "$unblock_script"
-}
+# shellcheck source=lib/cleanup.sh
+source "$SCRIPT_DIR/lib/cleanup.sh"
 
 # ── Startup detection ─────────────────────────────────────────────────────────
 
@@ -488,6 +501,14 @@ run_loop() {
   fi
 
   build_prompt
+
+  # In JIRA mode, transition the ticket to "In Progress" before invoking Copilot
+  # for the implement step.
+  if [[ "${TASK_BACKEND:-github}" == "jira" && "$MODE" == "implement" && -n "${TASK_ID:-}" ]]; then
+    echo "  🎫 Transitioning ${TASK_ID} → In Progress"
+    jira_transition "$TASK_ID" "In Progress" > /dev/null 2>&1 || \
+      echo "  ⚠️  Could not transition ${TASK_ID} (continuing anyway)"
+  fi
 
   OUTPUT=$(
     cd "$WORKTREE_DIR" && copilot \

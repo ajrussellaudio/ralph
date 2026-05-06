@@ -4,6 +4,9 @@
 # Expects REPO and FEATURE_BRANCH to be set by the caller (ralph.sh or tests).
 # Makes no writes to GitHub and performs no git operations.
 
+# shellcheck source=utils.sh
+source "$(dirname "${BASH_SOURCE[0]}")/utils.sh"
+
 _format_pr_lines() {
   jq -r '.[] |
     (if .reviewDecision == "APPROVED" then "APPROVED ✅"
@@ -20,6 +23,12 @@ _format_pr_lines() {
 
 ralph_status() {
   local rule="━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+  if [[ -n "${PARENT_TICKET:-}" ]]; then
+    _ralph_status_jira
+    return $?
+  fi
+
   echo "$rule"
   echo "🤖 Ralph — status"
   echo "$rule"
@@ -91,4 +100,73 @@ ralph_status() {
       (if (.labels | map(.name) | any(. == "blocked")) then "⚠️  " else "   " end) as $blocked |
       "  \($blocked)#\(.number)  \(.title)"'
   fi
+}
+
+# _ralph_status_jira — JIRA-backend status output.
+# Requires PARENT_TICKET (and REPO) to be set. Renders the parent ticket and a
+# table of its subtasks, including any linked open Ralph PR authored by @me.
+_ralph_status_jira() {
+  local rule="━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "$rule"
+  echo "🤖 Ralph — status (JIRA: ${PARENT_TICKET})"
+  echo "$rule"
+  echo ""
+
+  local parent_line parent_key parent_summary parent_status
+  parent_line=$(jira_with_retry issue view "$PARENT_TICKET" \
+    --plain --no-headers --columns "key,summary,status" < /dev/null 2>/dev/null \
+    | head -n 1 || echo "")
+
+  echo "🎫 Parent"
+  echo ""
+  if [[ -n "$parent_line" ]]; then
+    parent_key=$(printf '%s' "$parent_line" | awk -F '\t' '{print $1}')
+    parent_summary=$(printf '%s' "$parent_line" | awk -F '\t' '{print $2}')
+    parent_status=$(printf '%s' "$parent_line" | awk -F '\t' '{print $3}')
+    [[ -z "$parent_key" ]] && parent_key="$PARENT_TICKET"
+    echo "  ${parent_key}  ${parent_summary:-—}  [${parent_status:-—}]"
+  else
+    echo "  ⚠️  Could not fetch parent ticket ${PARENT_TICKET}"
+  fi
+  echo ""
+
+  # Open Ralph PRs authored by @me — used to find linked PRs by head branch.
+  local prs_json
+  prs_json=$(gh pr list --repo "$REPO" --state open --author "@me" \
+    --json number,headRefName --limit 200 \
+    < /dev/null 2>/dev/null || echo "[]")
+  [[ -z "$prs_json" ]] && prs_json="[]"
+
+  echo "📋 Subtasks"
+  echo ""
+
+  local subtasks_tsv
+  subtasks_tsv=$(jira_all_subtasks "$PARENT_TICKET" 2>/dev/null || echo "")
+  subtasks_tsv=$(printf '%s\n' "$subtasks_tsv" | sed '/^[[:space:]]*$/d')
+
+  if [[ -z "$subtasks_tsv" ]]; then
+    echo "  (no subtasks)"
+    return 0
+  fi
+
+  printf '  %-12s  %-40s  %-15s  %-10s  %s\n' "Key" "Summary" "Status" "Priority" "PR"
+
+  local key type summary status_col prio key_lower pr_num pr_field
+  while IFS=$'\t' read -r key type summary status_col prio; do
+    [[ -z "$key" ]] && continue
+    key_lower=$(printf '%s' "$key" | tr '[:upper:]' '[:lower:]')
+    # Match head branches that contain this ticket key (case-insensitive),
+    # bounded by non-alphanumerics to avoid matching e.g. CAPP-12 inside CAPP-123.
+    pr_field=$(printf '%s' "$prs_json" | jq -r --arg k "$key_lower" '
+      [.[] | select(.headRefName | ascii_downcase | test("(^|[^a-z0-9])" + $k + "($|[^a-z0-9])"))]
+      | first | .number // empty
+    ' 2>/dev/null || echo "")
+    if [[ -n "$pr_field" ]]; then
+      pr_num="#${pr_field}"
+    else
+      pr_num="—"
+    fi
+    printf '  %-12s  %-40s  %-15s  %-10s  %s\n' \
+      "$key" "${summary:0:40}" "${status_col:-—}" "${prio:-—}" "$pr_num"
+  done <<< "$subtasks_tsv"
 }
