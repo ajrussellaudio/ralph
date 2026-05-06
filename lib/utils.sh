@@ -195,9 +195,9 @@ jira_feature_branch() {
   local key="$1"
   local summary="${2-}"
   if [[ $# -lt 2 ]]; then
-    summary=$(jira_with_retry issue view "$key" \
-      --plain --no-headers --columns "summary" < /dev/null 2>/dev/null \
-      | head -n 1 || echo "")
+    summary=$(jira_with_retry issue view "$key" --raw < /dev/null 2>/dev/null \
+      | jq -r '.fields.summary // ""' 2>/dev/null \
+      || echo "")
   fi
   local key_lower
   key_lower=$(printf '%s' "$key" | tr '[:upper:]' '[:lower:]')

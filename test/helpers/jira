@@ -55,8 +55,19 @@ case "$CMD" in
         if [[ "${MOCK_JIRA_ISSUE_VIEW_EXIT:-0}" != "0" ]]; then
           exit "${MOCK_JIRA_ISSUE_VIEW_EXIT}"
         fi
-        printf '%s' "${MOCK_JIRA_ISSUE_VIEW_RESPONSE:-}"
-        [[ -n "${MOCK_JIRA_ISSUE_VIEW_RESPONSE:-}" ]] && printf '\n'
+        raw=0
+        for arg in "$@"; do
+          [[ "$arg" == "--raw" ]] && raw=1
+        done
+        resp="${MOCK_JIRA_ISSUE_VIEW_RESPONSE:-}"
+        if [[ "$raw" == "1" ]]; then
+          IFS=$'\t' read -r mk ms mst <<< "$resp"
+          printf '{"key":"%s","fields":{"summary":"%s","status":{"name":"%s"}}}\n' \
+            "${mk:-}" "${ms:-}" "${mst:-}"
+        else
+          printf '%s' "$resp"
+          [[ -n "$resp" ]] && printf '\n'
+        fi
         exit 0
         ;;
       move)

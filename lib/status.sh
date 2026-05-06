@@ -113,9 +113,9 @@ _ralph_status_jira() {
   echo ""
 
   local parent_line parent_key parent_summary parent_status
-  parent_line=$(jira_with_retry issue view "$PARENT_TICKET" \
-    --plain --no-headers --columns "key,summary,status" < /dev/null 2>/dev/null \
-    | head -n 1 || echo "")
+  parent_line=$(jira_with_retry issue view "$PARENT_TICKET" --raw < /dev/null 2>/dev/null \
+    | jq -r '[.key, (.fields.summary // ""), (.fields.status.name // "")] | @tsv' 2>/dev/null \
+    || echo "")
 
   echo "🎫 Parent"
   echo ""

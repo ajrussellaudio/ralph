@@ -313,7 +313,7 @@ fi
 # In JIRA mode, validate the parent ticket exists OR the feature branch is
 # already on origin. A typo'd ticket key fails fast here with a clear error.
 if [[ "$TASK_BACKEND" == "jira" ]]; then
-  if jira_with_retry issue view "$PARENT_TICKET" --plain --no-headers --columns key < /dev/null > /dev/null 2>&1; then
+  if jira_with_retry issue view "$PARENT_TICKET" --raw < /dev/null > /dev/null 2>&1; then
     : # parent ticket exists
   elif git -C "$GIT_ROOT" ls-remote --exit-code --heads origin "$FEATURE_BRANCH" > /dev/null 2>&1; then
     echo "  ℹ  JIRA ticket ${PARENT_TICKET} not reachable, but feature branch origin/${FEATURE_BRANCH} exists — continuing."
