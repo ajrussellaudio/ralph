@@ -25,6 +25,7 @@ set -euo pipefail
 JQ_FILTER=""
 JSON_FIELDS=""
 HAS_HEAD="false"
+HTTP_METHOD=""
 POSITIONAL=()
 
 while [[ $# -gt 0 ]]; do
@@ -32,6 +33,7 @@ while [[ $# -gt 0 ]]; do
     --jq)     JQ_FILTER="$2";   shift 2 ;;
     --json)   JSON_FIELDS="$2"; shift 2 ;;
     --head)   HAS_HEAD="true";  shift 2 ;;
+    -X)       HTTP_METHOD="$2"; shift 2 ;;
     -f)       shift 2 ;;
     --repo|--base|--state|--label|--limit|--author) shift 2 ;;
     *)        POSITIONAL+=("$1"); shift ;;
@@ -73,6 +75,12 @@ case "$CMD" in
     elif [[ "$ENDPOINT" == *"/reviews" ]]; then
       apply_jq "$MOCK_REVIEWS_RESPONSE"
     elif [[ "$ENDPOINT" == *"/pulls" ]]; then
+      # Real gh defaults to POST for `gh api` with -f params, which on /pulls
+      # tries to *create* a PR and returns 422. Routing must use -X GET.
+      if [[ "$HTTP_METHOD" != "GET" ]]; then
+        echo '{"message":"Validation Failed","status":"422"}'
+        exit 1
+      fi
       apply_jq "$MOCK_FEATURE_PR_LIST_RESPONSE"
     elif [[ "$ENDPOINT" == "/rate_limit" ]]; then
       [[ "${MOCK_RATE_LIMIT_EXIT:-0}" == "0" ]] || exit "${MOCK_RATE_LIMIT_EXIT}"

@@ -164,21 +164,26 @@ determine_mode() {
 
         # All subtasks Done — check for an existing feat→main PR.
         # Uses the REST API because gh pr list --head OWNER:BRANCH is unreliable
-        # for cross-fork PRs.
-        FEATURE_PR_JSON=$(gh_with_retry api "/repos/${UPSTREAM_REPO}/pulls" \
+        # for cross-fork PRs. -X GET is essential — without it, gh api defaults
+        # to POST and tries to *create* a PR, returning 422 error JSON that the
+        # routing code would mis-read as "PR exists".
+        FEATURE_PR_JSON=$(gh_with_retry api -X GET "/repos/${UPSTREAM_REPO}/pulls" \
           -f state=open \
           -f base=main \
           -f "head=${FORK_OWNER}:${FEATURE_BRANCH}" \
           --jq '.[0] // empty | {number, isDraft: .draft}' \
           < /dev/null 2>/dev/null || echo "")
 
-        if [[ -z "$FEATURE_PR_JSON" ]]; then
+        FEATURE_PR_NUMBER_DETECTED=$(echo "$FEATURE_PR_JSON" | jq -r '.number // empty' 2>/dev/null || echo "")
+        FEATURE_PR_DRAFT_DETECTED=$(echo "$FEATURE_PR_JSON" | jq -r '.isDraft // empty' 2>/dev/null || echo "")
+
+        if [[ -z "$FEATURE_PR_NUMBER_DETECTED" ]]; then
           MODE="feature-pr"
           FEATURE_PR_NUMBER=""
           echo "  ▶  Mode: $MODE  (all subtasks Done, opening feat→main PR)"
-        elif [[ "$(echo "$FEATURE_PR_JSON" | jq -r '.isDraft')" == "true" ]]; then
+        elif [[ "$FEATURE_PR_DRAFT_DETECTED" == "true" ]]; then
           MODE="feature-pr"
-          FEATURE_PR_NUMBER=$(echo "$FEATURE_PR_JSON" | jq -r '.number')
+          FEATURE_PR_NUMBER="$FEATURE_PR_NUMBER_DETECTED"
           echo "  ▶  Mode: $MODE  (draft feat→main PR #${FEATURE_PR_NUMBER} found — promoting to ready)"
         else
           MODE="complete"
@@ -244,21 +249,26 @@ determine_mode() {
       elif [[ -n "$FEATURE_LABEL" && "$FEATURE_BRANCH" != "main" ]]; then
         # PRD mode with no remaining task issues — check for an existing feat→main PR.
         # Uses the REST API because gh pr list --head OWNER:BRANCH is unreliable
-        # for cross-fork PRs.
-        FEATURE_PR_JSON=$(gh_with_retry api "/repos/${UPSTREAM_REPO}/pulls" \
+        # for cross-fork PRs. -X GET is essential — without it, gh api defaults
+        # to POST and tries to *create* a PR, returning 422 error JSON that the
+        # routing code would mis-read as "PR exists".
+        FEATURE_PR_JSON=$(gh_with_retry api -X GET "/repos/${UPSTREAM_REPO}/pulls" \
           -f state=open \
           -f base=main \
           -f "head=${FORK_OWNER}:${FEATURE_BRANCH}" \
           --jq '.[0] // empty | {number, isDraft: .draft}' \
           < /dev/null 2>/dev/null || echo "")
 
-        if [[ -z "$FEATURE_PR_JSON" ]]; then
+        FEATURE_PR_NUMBER_DETECTED=$(echo "$FEATURE_PR_JSON" | jq -r '.number // empty' 2>/dev/null || echo "")
+        FEATURE_PR_DRAFT_DETECTED=$(echo "$FEATURE_PR_JSON" | jq -r '.isDraft // empty' 2>/dev/null || echo "")
+
+        if [[ -z "$FEATURE_PR_NUMBER_DETECTED" ]]; then
           MODE="feature-pr"
           FEATURE_PR_NUMBER=""
           echo "  ▶  Mode: $MODE  (all task issues closed, opening feat→main PR)"
-        elif [[ "$(echo "$FEATURE_PR_JSON" | jq -r '.isDraft')" == "true" ]]; then
+        elif [[ "$FEATURE_PR_DRAFT_DETECTED" == "true" ]]; then
           MODE="feature-pr"
-          FEATURE_PR_NUMBER=$(echo "$FEATURE_PR_JSON" | jq -r '.number')
+          FEATURE_PR_NUMBER="$FEATURE_PR_NUMBER_DETECTED"
           echo "  ▶  Mode: $MODE  (draft feat→main PR #${FEATURE_PR_NUMBER} found — promoting to ready)"
         else
           MODE="complete"

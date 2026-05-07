@@ -177,6 +177,24 @@ setup() {
   [ "$MODE" = "complete" ]
 }
 
+# Regression: gh api defaults to POST when given -f params, and POST /pulls
+# tries to *create* a PR (returning 422 error JSON). Without -X GET, routing
+# would mis-read the error JSON as "PR exists" and false-fire `complete`.
+# The mock returns 422 unless -X GET is passed, so this test fails if the
+# regression returns.
+@test "copilot: feat→main PR check uses -X GET (routes to feature-pr when no PR exists)" {
+  export REVIEW_BACKEND=copilot
+  export FEATURE_LABEL="prd/now-with-forks"
+  export MOCK_PR_LIST_RESPONSE='[]'
+  export MOCK_ISSUE_LIST_RESPONSE='[]'
+  export MOCK_FEATURE_PR_LIST_RESPONSE='[]'
+
+  determine_mode
+
+  [ "$MODE" = "feature-pr" ]
+  [ -z "$FEATURE_PR_NUMBER" ]
+}
+
 # ─── determine_mode: REVIEW_BACKEND=comments ─────────────────────────────────
 
 @test "comments: open PR, APPROVED comment → merge" {
