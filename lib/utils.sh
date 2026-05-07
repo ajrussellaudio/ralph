@@ -188,8 +188,10 @@ jira_transition() {
 
 # jira_feature_branch PARENT_KEY [SUMMARY]
 # Derives a feature-branch name from the parent ticket.
-#   feat/<lowercased-key>-<kebab-summary>     when summary is non-empty
-#   feat/<lowercased-key>                     when summary is empty
+#   feat/<KEY>-<kebab-summary>     when summary is non-empty
+#   feat/<KEY>                     when summary is empty
+# The ticket key is preserved as-is (uppercase by JIRA convention) so that
+# parent and subtask branches share the same casing.
 # When SUMMARY is omitted, looks it up via `jira issue view`.
 jira_feature_branch() {
   local key="$1"
@@ -199,13 +201,11 @@ jira_feature_branch() {
       | jq -r '.fields.summary // ""' 2>/dev/null \
       || echo "")
   fi
-  local key_lower
-  key_lower=$(printf '%s' "$key" | tr '[:upper:]' '[:lower:]')
   local slug
   slug=$(jira_kebab_summary "$summary")
   if [[ -n "$slug" ]]; then
-    printf 'feat/%s-%s' "$key_lower" "$slug"
+    printf 'feat/%s-%s' "$key" "$slug"
   else
-    printf 'feat/%s' "$key_lower"
+    printf 'feat/%s' "$key"
   fi
 }

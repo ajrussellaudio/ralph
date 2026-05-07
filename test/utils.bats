@@ -275,16 +275,16 @@ STUB
 
 # ─── jira_feature_branch ──────────────────────────────────────────────────────
 
-@test "jira_feature_branch: composes feat/<key>-<slug> from key+summary" {
-  [ "$(jira_feature_branch CAPP-123 "Add login button")" = "feat/capp-123-add-login-button" ]
+@test "jira_feature_branch: composes feat/<KEY>-<slug> from key+summary" {
+  [ "$(jira_feature_branch CAPP-123 "Add login button")" = "feat/CAPP-123-add-login-button" ]
 }
 
-@test "jira_feature_branch: empty summary → feat/<key> only" {
-  [ "$(jira_feature_branch CAPP-123 "")" = "feat/capp-123" ]
+@test "jira_feature_branch: empty summary → feat/<KEY> only" {
+  [ "$(jira_feature_branch CAPP-123 "")" = "feat/CAPP-123" ]
 }
 
-@test "jira_feature_branch: lowercases the project key" {
-  [ "$(jira_feature_branch ABC-9 "Hello World")" = "feat/abc-9-hello-world" ]
+@test "jira_feature_branch: preserves uppercase project key" {
+  [ "$(jira_feature_branch ABC-9 "Hello World")" = "feat/ABC-9-hello-world" ]
 }
 
 # ─── jira_with_retry ──────────────────────────────────────────────────────────
