@@ -21,6 +21,7 @@ Delegate the review to a sub-agent. Do not review the code yourself.
 Launch a **code-review sub-agent** with this prompt:
 
 > "Review PR #{{PR_NUMBER}} in `{{REPO}}`.
+> If the `/code-review-and-quality` skill is available, follow it for the review methodology (five-axis review: correctness, readability, architecture, security, performance). Otherwise, perform a standard code review.
 > Get the diff with: `gh pr diff {{PR_NUMBER}} --repo {{REPO}}`
 > Get the PR description using GitHub MCP tools.
 > Run the test suite: `{{TEST_CMD}}`
