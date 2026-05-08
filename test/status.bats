@@ -281,3 +281,82 @@ setup() {
   [ "$status" -eq 0 ]
   echo "$output" | grep -qv "Feature PR"
 }
+
+# ─── JIRA mode (--ticket) ─────────────────────────────────────────────────────
+
+@test "status --ticket: renders parent ticket key, summary, and status" {
+  export PARENT_TICKET="CAPP-100"
+  unset FEATURE_LABEL
+  export MOCK_JIRA_ISSUE_VIEW_RESPONSE=$'CAPP-100\tBuild the widget\tIn Progress'
+  export MOCK_JIRA_ISSUE_LIST_RESPONSE=$'CAPP-101\tSub-task\tFirst subtask\tTo Do\tHigh'
+  export MOCK_PR_LIST_RESPONSE='[]'
+  run ralph_status
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "CAPP-100"
+  echo "$output" | grep -q "Build the widget"
+  echo "$output" | grep -q "In Progress"
+}
+
+@test "status --ticket: renders subtask row with key, summary, status, priority" {
+  export PARENT_TICKET="CAPP-100"
+  unset FEATURE_LABEL
+  export MOCK_JIRA_ISSUE_VIEW_RESPONSE=$'CAPP-100\tParent ticket\tIn Progress'
+  export MOCK_JIRA_ISSUE_LIST_RESPONSE=$'CAPP-101\tSub-task\tFirst subtask\tTo Do\tHigh'
+  export MOCK_PR_LIST_RESPONSE='[]'
+  run ralph_status
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "CAPP-101"
+  echo "$output" | grep -q "First subtask"
+  echo "$output" | grep -q "To Do"
+  echo "$output" | grep -q "High"
+}
+
+@test "status --ticket: subtask with no linked PR shows em dash" {
+  export PARENT_TICKET="CAPP-100"
+  unset FEATURE_LABEL
+  export MOCK_JIRA_ISSUE_VIEW_RESPONSE=$'CAPP-100\tParent\tIn Progress'
+  export MOCK_JIRA_ISSUE_LIST_RESPONSE=$'CAPP-101\tSub-task\tNo linked PR\tTo Do\tMedium'
+  export MOCK_PR_LIST_RESPONSE='[]'
+  run ralph_status
+  [ "$status" -eq 0 ]
+  # Subtask row must contain an em dash placeholder for missing PR.
+  row=$(echo "$output" | grep "CAPP-101")
+  echo "$row" | grep -q "—"
+}
+
+@test "status --ticket: subtask with linked PR shows PR number" {
+  export PARENT_TICKET="CAPP-100"
+  unset FEATURE_LABEL
+  export MOCK_JIRA_ISSUE_VIEW_RESPONSE=$'CAPP-100\tParent\tIn Progress'
+  export MOCK_JIRA_ISSUE_LIST_RESPONSE=$'CAPP-101\tSub-task\tHas linked PR\tIn Progress\tMedium'
+  export MOCK_PR_LIST_RESPONSE='[{"number": 99, "headRefName": "feat/capp-101-has-linked-pr"}]'
+  run ralph_status
+  [ "$status" -eq 0 ]
+  row=$(echo "$output" | grep "CAPP-101")
+  echo "$row" | grep -q "#99"
+}
+
+@test "status --ticket: multiple subtasks (open + done) all rendered" {
+  export PARENT_TICKET="CAPP-100"
+  unset FEATURE_LABEL
+  export MOCK_JIRA_ISSUE_VIEW_RESPONSE=$'CAPP-100\tParent\tIn Progress'
+  export MOCK_JIRA_ISSUE_LIST_RESPONSE=$'CAPP-101\tSub-task\tOpen one\tTo Do\tHigh\nCAPP-102\tSub-task\tDone one\tDone\tMedium'
+  export MOCK_PR_LIST_RESPONSE='[]'
+  run ralph_status
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "CAPP-101"
+  echo "$output" | grep -q "Open one"
+  echo "$output" | grep -q "CAPP-102"
+  echo "$output" | grep -q "Done one"
+}
+
+@test "status --ticket: no subtasks → shows placeholder" {
+  export PARENT_TICKET="CAPP-100"
+  unset FEATURE_LABEL
+  export MOCK_JIRA_ISSUE_VIEW_RESPONSE=$'CAPP-100\tParent\tTo Do'
+  export MOCK_JIRA_ISSUE_LIST_RESPONSE=""
+  export MOCK_PR_LIST_RESPONSE='[]'
+  run ralph_status
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "no subtasks"
+}

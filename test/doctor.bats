@@ -245,4 +245,46 @@ _make_bin() {
   echo "$output" | grep -q "🩺 Ralph — doctor"
 }
 
+# ─── jira-cli warning checks (only when TASK_BACKEND=jira) ───────────────────
+
+@test "doctor: TASK_BACKEND=jira + jira-cli absent → ⚠️ line and exit 0" {
+  export TASK_BACKEND=jira
+  # Hermetic bin without jira (only gh + copilot from helpers).
+  _make_bin gh copilot
+
+  run ralph_doctor
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "⚠️.*jira"
+  echo "$output" | grep -qi "→.*install"
+}
+
+@test "doctor: TASK_BACKEND=jira + jira-cli present + authed → ✅ line and exit 0" {
+  export TASK_BACKEND=jira
+  _make_bin gh copilot jira
+  export MOCK_JIRA_AUTH_EXIT=0
+
+  run ralph_doctor
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "✅.*jira"
+  echo "$output" | grep -qv "⚠️.*jira"
+}
+
+@test "doctor: TASK_BACKEND=jira + jira-cli present but unauthenticated → ⚠️ line and exit 0" {
+  export TASK_BACKEND=jira
+  _make_bin gh copilot jira
+  export MOCK_JIRA_AUTH_EXIT=1
+
+  run ralph_doctor
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "⚠️.*jira"
+  echo "$output" | grep -qi "→.*auth\|→.*login\|→.*jira init"
+}
+
+@test "doctor: TASK_BACKEND unset → no jira-cli check lines (9-check behaviour preserved)" {
+  unset TASK_BACKEND || true
+  run ralph_doctor
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -qv "jira"
+}
+
 # ─── All checks pass ──────────────────────────────────────────────────────────
